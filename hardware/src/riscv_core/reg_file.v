@@ -11,7 +11,7 @@ module reg_file (
     reg [31:0] rd2_reg;
     initial begin
         // TODO: double check these on lab computers!
-        genvar i;
+        integer i;
         for (i = 0; i < DEPTH; i = i + 1) begin
             mem[i] = 0;
         end
@@ -27,6 +27,8 @@ module reg_file (
     end
     always @(posedge clk) begin
         //write
+        // we: write enable
+        // wa: write address
         if (we && wa != 5'd0) begin
             mem[wa] <= wd;
         end
