@@ -97,7 +97,7 @@ module synth #(
     end
 
     assign carrier_next_sample = (state == STATE_FETCH_CAR) && note_en;
-    assign code = carrier_samples;
+    assign sample = carrier_samples;
 
     // TODO: 251B -- Sum samples
 
