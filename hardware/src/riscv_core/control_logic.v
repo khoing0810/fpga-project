@@ -51,7 +51,7 @@ always @(*) begin
     case (inst[6:0])
         7'b0110011: begin // R-type
             reg_wen_reg = 1;
-            imm_sel_reg = 3'b000;
+            imm_sel_reg = 3'b000; // shouldnt use immediate! so at 3'b000 should be NOP/nothing
             br_un_reg = 0;
             a_sel_reg = 2'b0;
             b_sel_reg = 2'b2;
