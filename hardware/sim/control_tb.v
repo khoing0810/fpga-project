@@ -39,15 +39,15 @@ module control_tb();
     );
 
     initial begin // Assumed no pipeline!
-        // R-Type Test
-        inst = 32'h00200013;
+        // I-Type Test
+        inst = 32'h00200013; // addi x0, x0, 2
         pc = 4;
 
         assert(imm_sel == 3'b000) else $fatal("Test failed! imm_sel is not correct for instruction %04x", inst);
         assert(alu_sel == 4'b0000) else $fatal("Test failed! alu_sel is not correct for instruction %04x", inst);
         assert(a_sel == 2'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
         assert(b_sel == 2'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
-        // I-Type Test
+        // R-Type Test
 
         // J-Type Test
 
