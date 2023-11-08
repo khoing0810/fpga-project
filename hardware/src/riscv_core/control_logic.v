@@ -46,21 +46,24 @@ reg mem_sel_reg = 0;
 reg wb_sel_reg = 0;
 reg csr_sel_reg = 0;
 reg csr_wen_reg = 0;
+reg pc_sel_reg;
 
 always @(*) begin
     case (inst[6:0])
         7'b0110011: begin // R-type
             reg_wen_reg = 1;
-            imm_sel_reg = 3'b000;
+            imm_sel_reg = 3'b000; // shouldnt use immediate! so at 3'b000 should be NOP/nothing
             br_un_reg = 0;
-            a_sel_reg = 2'b0;
-            b_sel_reg = 2'b2;
-            alu_sel_reg = (funct3 == 3'b000) ? (funct7 == 7'd0: ALU_ADD : ALU_SUB ) : // add if 0 /sub if != 0
+            a_sel_reg = 2'b00;
+            b_sel_reg = 2'b10;
+            alu_sel_reg = (funct3 == 3'b000 & funct7 == 7'd0) ? ALU_ADD :
+                          (funct3 == 3'b000) ? ALU_SUB : // add if 0 /sub if != 0
                           (funct3 == 3'b001) ? ALU_SLL : // sll
                           (funct3 == 3'b010) ? ALU_SLT : // slt
                           (funct3 == 3'b011) ? ALU_SLTU : // sltu
                           (funct3 == 3'b100) ? ALU_XOR : // xor
-                          (funct3 == 3'b101) ? (funct7 == 7'd0: ALU_SRL : ALU_SRA) : // srl if 0 / sra if != 0
+                          (funct3 == 3'b101 & funct7 == 7'd0) ? ALU_SRL :
+                          (funct3 == 3'b101) ? ALU_SRA : // srl if 0 / sra if != 0
                           (funct3 == 3'b110) ? ALU_OR : // or
                           (funct3 == 3'b111) ? ALU_AND : // and
                           4'b0000;
@@ -74,14 +77,15 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b000;
             br_un_reg = 0;
-            a_sel_reg = 2'b0;
-            b_sel_reg = 2'b2;
+            a_sel_reg = 2'b00;
+            b_sel_reg = 2'b01;
             alu_sel_reg = (funct3 == 3'b000) ? ALU_ADD : // add if 0 /sub if != 0
                           (funct3 == 3'b001) ? ALU_SLL : // sll
                           (funct3 == 3'b010) ? ALU_SLT : // slt
                           (funct3 == 3'b011) ? ALU_SLTU : // sltu
                           (funct3 == 3'b100) ? ALU_XOR : // xor
-                          (funct3 == 3'b101) ? (funct7 == 7'd0: ALU_SRL : ALU_SRA) : // srl if 0 / sra if != 0
+                          (funct3 == 3'b101 & funct7 == 7'd0) ? ALU_SRL : 
+                          (funct3 == 3'b101) ? ALU_SRA : // srl if 0 / sra if != 0
                           (funct3 == 3'b110) ? ALU_OR : // or
                           (funct3 == 3'b111) ? ALU_AND : // and
                           4'b0000;
@@ -95,8 +99,8 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b000;
             br_un_reg = 0;
-            a_sel_reg = 2'b0;
-            b_sel_reg = 2'b2;
+            a_sel_reg = 2'b00;
+            b_sel_reg = 2'b10;
             alu_sel_reg = ALU_ADD;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -108,8 +112,8 @@ always @(*) begin
             reg_wen_reg = 0;
             imm_sel_reg = 3'b001;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b00;
+            b_sel_reg = 2'b01;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 1;
             mem_sel_reg = 0;
@@ -121,8 +125,8 @@ always @(*) begin
             reg_wen_reg = 0;
             imm_sel_reg = 3'b010;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b01;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -134,8 +138,8 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b011;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b01;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -147,8 +151,8 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b011;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b01;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -160,8 +164,8 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b100;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b01;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -174,8 +178,8 @@ always @(*) begin
             reg_wen_reg = 1;
             imm_sel_reg = 3'b000;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b1;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -190,8 +194,8 @@ always @(*) begin
                     reg_wen_reg = 0;
                     imm_sel_reg = 3'b000;
                     br_un_reg = 0;
-                    a_sel_reg = 1'b0;
-                    b_sel_reg = 1'b1;
+                    a_sel_reg = 2'b0;
+                    b_sel_reg = 2'b1;
                     alu_sel_reg = 4'b0000;
                     mem_wen_reg = 0;
                     mem_sel_reg = 0;
@@ -203,8 +207,8 @@ always @(*) begin
                     reg_wen_reg = 0;
                     imm_sel_reg = 3'b000;
                     br_un_reg = 0;
-                    a_sel_reg = 1'b0;
-                    b_sel_reg = 1'b1;
+                    a_sel_reg = 2'b0;
+                    b_sel_reg = 2'b1;
                     alu_sel_reg = 4'b0000;
                     mem_wen_reg = 0;
                     mem_sel_reg = 0;
@@ -216,8 +220,8 @@ always @(*) begin
                     reg_wen_reg = 0;
                     imm_sel_reg = 3'b000;
                     br_un_reg = 0;
-                    a_sel_reg = 1'b0;
-                    b_sel_reg = 1'b1;
+                    a_sel_reg = 2'b0;
+                    b_sel_reg = 2'b1;
                     alu_sel_reg = 4'b0000;
                     mem_wen_reg = 0;
                     mem_sel_reg = 0;
@@ -229,8 +233,8 @@ always @(*) begin
                     reg_wen_reg = 0;
                     imm_sel_reg = 3'b000;
                     br_un_reg = 0;
-                    a_sel_reg = 1'b0;
-                    b_sel_reg = 1'b1;
+                    a_sel_reg = 2'b0;
+                    b_sel_reg = 2'b1;
                     alu_sel_reg = 4'b0000;
                     mem_wen_reg = 0;
                     mem_sel_reg = 0;
@@ -244,8 +248,8 @@ always @(*) begin
             reg_wen_reg = 0;
             imm_sel_reg = 3'b000;
             br_un_reg = 0;
-            a_sel_reg = 1'b0;
-            b_sel_reg = 1'b1;
+            a_sel_reg = 2'b0;
+            b_sel_reg = 2'b1;
             alu_sel_reg = 4'b0000;
             mem_wen_reg = 0;
             mem_sel_reg = 0;
@@ -255,16 +259,17 @@ always @(*) begin
         end
     endcase
 end
-endmodule
 
 assign reg_wen = reg_wen_reg;
-assign [2:0] imm_sel = imm_sel_reg;
+assign imm_sel = imm_sel_reg;
 assign br_un = br_un_reg;
 assign a_sel = a_sel_reg;
 assign b_sel = b_sel_reg;
-assign [3:0] alu_sel = alu_sel_reg;
+assign alu_sel = alu_sel_reg;
 assign mem_wen = mem_wen_reg; //MAY NOT NEED
 assign mem_sel = mem_sel_reg;
 assign wb_sel = wb_sel_reg;
 assign csr_sel = csr_sel_reg;
 assign csr_wen = csr_wen_reg;
+
+endmodule
