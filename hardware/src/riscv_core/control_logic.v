@@ -13,7 +13,7 @@ module control_logic ( // ALL BASE SIGNALS ONLY (forwarding logic to be handled 
     output reg a_sel,
     output reg b_sel,
     output reg [3:0] alu_sel,
-    output reg mem_wen, //MAY NOT NEED
+    output reg [3:0] mem_wen, //MAY NOT NEED
     output reg mem_sel,
     output reg [1:0] wb_sel,
     output reg csr_sel,
@@ -88,6 +88,15 @@ always @(*) begin
             csr_wen = 0;
         end
         `OPC_STORE: begin // store
+            case (funct3)
+                `FNC_SB: begin
+                    
+                end
+                `FNC_SH: begin
+                end
+                `FNC_SW: begin
+                end
+            endcase
             reg_wen = 0;
             imm_sel = 3'b001;
             br_un = 0;

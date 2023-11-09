@@ -21,28 +21,34 @@ module cpu #(
     wire a_fwdmux, a_fwd_sel, b_fwdmux, b_fwd_sel; // will be a mux between the actual A/B mux and the forwarding mux
     wire wb_mux, wb_sel, aluwb_mux, aluwb_sel;
     wire alu_fwd;
+    wire [31:0] alu_out;
+    wire [31:0] inst_mux;
     
     // PIPELINE REGISTERS
     reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
+        //[0] = if2id (right after fetch)
+        //[1] = id2ex (right after decode)
+        //[2] = ex2mw (right after execute)
+        //[3] = mem2wb (done executing)
 
-    reg [31:0] inst_if2id [3:0]; 
-    reg [31:0] inst_id2ex [3:0];
-    reg [31:0] inst_ex2mw [3:0];
-    reg [31:0] inst_mem = 0;
+    // reg [31:0] inst_if2id [3:0]; 
+    // reg [31:0] inst_id2ex [3:0];
+    // reg [31:0] inst_ex2mw [3:0];
+    reg [31:0] inst_mem = 0; // what is this?
 
     reg [31:0] pc = 32'h4000_0000; // program counter
     reg [31:0] cycle_count = 0; // number of cycles executed
     reg [31:0] instruction_counter = 0; // number of cycles executed
 
-    reg [31:0] rs1_id2ex;
-    reg [31:0] rs2_id2ex;
+    reg [31:0] rs1_id2ex; // rs1 value from the ID stage
+    reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
-    reg [31:0] imm_gen_id2ex;
+    reg [31:0] imm_gen_id2ex; // immediate from the ID stage
     
-    reg [31:0] pc_id2ex;
-    reg [31:0] pc_ex2mw;
+    reg [31:0] pc_id2ex; // PC from the ID stage
+    reg [31:0] pc_ex2mw; // PC from the EX stage
     
-    reg [31:0] alu_ex2mw;
+    reg [31:0] alu_ex2mw; // ALU result from the EX stage
 
     // CSR
     reg [31:0] tohost_csr = 0;
@@ -97,6 +103,9 @@ module cpu #(
       .din(dmem_din),
       .dout(dmem_dout)
     );
+    // assign dmem_addr = alu_out[13:0];
+    // assign dmem_din = rs2_id2ex;
+
 
     // Instruction Memory
     // Synchronous read: read takes one cycle
@@ -161,12 +170,25 @@ module cpu #(
     alu alu ( // TODO: replace the argument values
         .a_val(0),
         .b_val(0),
-        .alu_sel(0),
-        .out_val(0)
+        .alu_sel(alu_sel),
+        .out_val(alu_out)
     );
 
     reg [2:0] imm;
-    reg [2:0] imm_sel;
+
+    //TODO: add all the signals that we need to get from the control logic
+    wire [2:0] imm_sel;
+    wire reg_wen; 
+    wire [2:0] imm_sel;
+    wire br_un;
+    wire a_sel;
+    wire b_sel;
+    wire [3:0] alu_sel;
+    wire [3:0] mem_wen; // MAY NEED TO CALCULATE IN CPU ITSELF
+    wire mem_sel;
+    wire [1:0] wb_sel;
+    wire csr_sel;
+    wire csr_wen;
 
     imm_gen imm_gen (
         .inst(inst[0]),
@@ -191,23 +213,84 @@ module cpu #(
           rs1_id2ex <= rd1;
           rs2_id2ex <= rd2;
           imm_gen_id2ex <= imm;
+        
+          inst[1] <= inst[0];
+          inst[2] <= inst[1];
+          inst[3] <= inst[2];
+          inst[0] <= imem_doutb;
 
-          inst_ex2mw[3] <= inst_ex2mw[2];
-          inst_ex2mw[2] <= inst_ex2mw[1];
-          inst_ex2mw[1] <= inst_ex2mw[0];
-          inst_ex2mw[0] <= inst_id2ex[3];
+          if (inst[4] != NOP) begin
+            instruction_counter <= instruction_counter + 1;
+          end
+          cycle_counter <= cycle_counter + 1;
+          
+        //   inst_ex2mw[3] <= inst_ex2mw[2];
+        //   inst_ex2mw[2] <= inst_ex2mw[1];
+        //   inst_ex2mw[1] <= inst_ex2mw[0];
+        //   inst_ex2mw[0] <= inst_id2ex[3];
 
-          inst_id2ex[3] <= inst_id2ex[2];
-          inst_id2ex[2] <= inst_id2ex[1];
-          inst_id2ex[1] <= inst_id2ex[0];
-          inst_id2ex[0] <= inst_if2id[3];
+        //   inst_id2ex[3] <= inst_id2ex[2];
+        //   inst_id2ex[2] <= inst_id2ex[1];
+        //   inst_id2ex[1] <= inst_id2ex[0];
+        //   inst_id2ex[0] <= inst_if2id[3];
 
-          inst_if2id[3] <= inst_if2id[2];
-          inst_if2id[2] <= inst_if2id[1];
-          inst_if2id[1] <= inst_if2id[0];
-          inst_if2id[0] <= NOP; // TODO: feed the next instruction!
-
+        //   inst_if2id[3] <= inst_if2id[2];
+        //   inst_if2id[2] <= inst_if2id[1];
+        //   inst_if2id[1] <= inst_if2id[0];
+        //   inst_if2id[0] <= NOP; // TODO: feed the next instruction!
       end
+    end
+
+    // ID stage
+    control_logic control_logic1 ( // only need imm_sel since that is the only signal that we need in this stage
+        .inst(inst[0]),
+        .imm_sel(imm_sel),
+    );
+
+    // EX stage
+    control_logic control_logic2 (
+        .inst(inst[1]),
+        .a_sel(a_sel),
+        .b_sel(b_sel),
+        .alu_sel(alu_sel),
+        .mem_wen(mem_wen), // should put mem signals in the EX stage because we need to set that value before we get to the mem stage
+        .mem_sel(mem_sel),
+    ); 
+
+    // MEM+WB+IF stage
+    control_logic control_logic3 (
+        .inst(inst[2]),
+        .reg_wen(we),
+        .wb_sel(wb_sel),
+        .csr_sel(csr_sel),
+        .csr_wen(csr_wen)
+    );
+
+    wire [31:0] mem_mux_wb;
+    always @(*) begin
+        if (inst[6:0] == `OPC_STORE) begin
+            case (funct3)
+                `FNC_SB: mem_wen = 4'b0001 << (imm_gen_id2ex % 4);
+                `FNC_SH: mem_wen = 4'b0011 << (imm_gen_id2ex % 4);
+                `FNC_SW: mem_wen = 4'b1111;
+                default: mem_wen = 4'b0000;
+            endcase
+        end
+        else if (inst[6:0] == `OPC_LOAD) begin
+            case (funct3)
+                `FNC_LB: mem_mux_wb = {{24{mem_mux[(imm_gen_id2ex % 4)*8+7]}}, 
+                                        mem_mux[(imm_gen_id2ex % 4)*8+7:(imm_gen_id2ex % 4)*8]};
+                `FNC_LH: mem_mux_wb = {{16{mem_mux[(imm_gen_id2ex % 4)*8+15]}},
+                                        mem_mux[(imm_gen_id2ex % 4)*8+15:(imm_gen_id2ex % 4)*8]};
+                `FNC_LW: mem_mux_wb = mem_mux;
+                default: mem_mux_wb = 0;
+            endcase
+        end
+        else begin
+            mem_wen = 4'b0000;
+            mem_mux = 0;
+        end
+        
     end
 
     // MUXs
@@ -223,5 +306,12 @@ module cpu #(
     assign alu_fwd = alu_ex2mw;
 
     assign bios_addra = pc_mux;
+
+
+    assign bios_addra = pc_mux[11:0];
+    assign imem_addrb = pc_mux[13:0];
+
+    assign inst_mux = pc[30] == 1'b1 ? imem_doutb : bios_douta; 
+    
 
 endmodule
