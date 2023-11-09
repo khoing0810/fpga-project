@@ -114,16 +114,50 @@ module control_tb();
         // sw
         inst = 32'h00112223; // sw x1 4(x2)
         #(2)
+        assert(imm_sel == 3'b001) else $fatal("Test failed! imm_sel is not correct for instruction %04x. imm_sel is %d", inst, imm_sel);
+        assert(alu_sel == 4'b0000) else $fatal("Test failed! alu_sel is not correct for instruction %04x", inst);
+        assert(a_sel == 1'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
+        assert(b_sel == 1'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
+        assert(reg_wen == 0) else $fatal("Test failed! reg_wen is not correct for instruction %04x.", reg_wen);
+        assert(mem_wen == 1) else $fatal("Test failed! mem_wen should be 1");
 
         // L-Type Test
         // lw
+        inst = 32'h0031A203; // lw x4 3(x3)
+        #(2)
+        assert(imm_sel == 3'b000) else $fatal("Test failed! imm_sel is not correct for instruction %04x. imm_sel is %d", inst, imm_sel);
+        assert(alu_sel == 4'b0000) else $fatal("Test failed! alu_sel is not correct for instruction %04x", inst);
+        assert(a_sel == 1'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
+        assert(b_sel == 1'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
+        assert(wb_sel == 2'd1) else $fatal("Test failed! wb_sel is not correct for instruction %04x. curr wb_sel: %d\n", inst, wb_sel);
+        assert(reg_wen == 1) else $fatal("Test failed! reg_wen is not correct for instruction %04x.", reg_wen);
+        
         // CSR-Type Test
         // csrrw, csrrwi (make sure to check for csr_wen)
+        inst = 32'h51E09073; // csrrw x0 0x51E x1
+        #(2)
+        assert(imm_sel == 3'b101) else $fatal("Test failed! imm_sel is not correct for instruction %04x. imm_sel is %d", inst, imm_sel);
+        assert(a_sel == 1'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
+        assert(csr_sel == 0) else $fatal("Test failed! csr_sel should be 0");
+        assert(csr_wen == 1) else $fatal("Test failed! csr_wen should be 1");
 
         // u-type
         // lui (do not check a_sel), auipc if possible
+        inst = 32'h00001137; // lui x2, 0x1
+        #(2)
+        assert(imm_sel == 3'b011) else $fatal("Test failed! imm_sel is not correct for instruction %04x. imm_sel is %d", inst, imm_sel);
+        assert(a_sel == 1'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
+        assert(b_sel == 1'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
+        assert(reg_wen == 1) else $fatal("Test failed! reg_wen is not correct for instruction %04x.", reg_wen);
+        assert(wb_sel == 2'd1) else $fatal("Test failed! wb_sel is not correct for instruction %04x. curr wb_sel: %d\n", inst, wb_sel);
 
-
+        inst = 32'h00010097; // auipc x1 16
+        #(2)
+        assert(imm_sel == 3'b011) else $fatal("Test failed! imm_sel is not correct for instruction %04x. imm_sel is %d", inst, imm_sel);
+        assert(a_sel == 1'd1) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
+        assert(b_sel == 1'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
+        assert(reg_wen == 1) else $fatal("Test failed! reg_wen is not correct for instruction %04x.", reg_wen);
+        assert(wb_sel == 2'd0) else $fatal("Test failed! wb_sel is not correct for instruction %04x. curr wb_sel: %d\n", inst, wb_sel);
         $display("---Test passed!---");
         $finish;
     end
