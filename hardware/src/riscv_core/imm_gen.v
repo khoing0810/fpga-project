@@ -11,6 +11,7 @@ always @(*) begin
         3'b010: imm_reg = {{12{inst[31]}}, inst[31], inst[7], inst[30:25], inst[11:8], 1'b0}; // imm_sel == 2 == B_TYPE
         3'b011: imm_reg = {inst[31:12], 12'b0}; // imm_sel == 3 == U-TYPE
         3'b100: imm_reg = {{20{inst[31]}}, inst[31], inst[19:12], inst[20], inst[30:21], 1'b0}; // imm_sel == 4 == J-TYPE
+        3'b101: imm_reg = {27'd0, inst[19:15]}; // imm_sel = 5 == CSR
         default: imm_reg = 0;
     endcase
 end

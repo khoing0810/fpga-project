@@ -18,12 +18,14 @@ module cpu #(
     wire bios_ena, bios_enb;
     wire pc_mux, pc_sel, mem_mux, mem_sel;
     wire a_mux, a_sel, b_mux, b_sel;
+    wire a_fwdmux, a_fwd_sel, b_fwdmux, b_fwd_sel; // will be a mux between the actual A/B mux and the forwarding mux
     wire wb_mux, wb_sel, aluwb_mux, aluwb_sel;
+    wire alu_fwd;
     
     // PIPELINE REGISTERS
-    //reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
+    reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
 
-    reg [31:0] inst_if2id [3:0];
+    reg [31:0] inst_if2id [3:0]; 
     reg [31:0] inst_id2ex [3:0];
     reg [31:0] inst_ex2mw [3:0];
     reg [31:0] inst_mem = 0;
@@ -46,20 +48,27 @@ module cpu #(
     reg [31:0] tohost_csr = 0;
     
     initial begin
-        inst_if2id[0] = NOP;
-        inst_if2id[1] = NOP;
-        inst_if2id[2] = NOP;
-        inst_if2id[3] = NOP;
+        
+        // inst_if2id[0] = NOP;
+        // inst_if2id[1] = NOP;
+        // inst_if2id[2] = NOP;
+        // inst_if2id[3] = NOP;
 
-        inst_id2ex[0] = NOP;
-        inst_id2ex[1] = NOP;
-        inst_id2ex[2] = NOP;
-        inst_id2ex[3] = NOP;
+        // inst_id2ex[0] = NOP;
+        // inst_id2ex[1] = NOP;
+        // inst_id2ex[2] = NOP;
+        // inst_id2ex[3] = NOP;
 
-        inst_ex2mw[0] = NOP;
-        inst_ex2mw[1] = NOP;
-        inst_ex2mw[2] = NOP;
-        inst_ex2mw[3] = NOP;
+        // inst_ex2mw[0] = NOP;
+        // inst_ex2mw[1] = NOP;
+        // inst_ex2mw[2] = NOP;
+        // inst_ex2mw[3] = NOP;
+        
+
+        inst[0] = NOP;
+        inst[1] = NOP;
+        inst[2] = NOP;
+        inst[3] = NOP;
     end
     
     bios_mem bios_mem (
@@ -156,18 +165,20 @@ module cpu #(
         .out_val(0)
     );
 
-    // wire [2:0] dummy_imm_sel;
     reg [2:0] imm;
+    reg [2:0] imm_sel;
 
-    // imm_gen imm_gen (
-    //     .inst(inst[0]),
-    //     .imm_sel(dummy_imm_sel), //TODO
-    //     .imm(imm)
-    // );
+    imm_gen imm_gen (
+        .inst(inst[0]),
+        .imm_sel(imm_sel), //TODO
+        .imm(imm)
+    );
 
     // TODO: Your code to implement a fully functioning RISC-V core
     // Add as many modules as you want
     // Feel free to move the memory modules around
+
+    // MAKE SURE regwen comes from the instruction used for mem/wb
 
     always @(posedge clk) begin
       if (rst) begin
@@ -206,7 +217,10 @@ module cpu #(
     assign b_mux = (b_sel == 2'd0) ? rs2_id2ex : (b_sel == 2'd1) ? aluwb_mux : (b_sel == 2'd2) ? imm : NOP; // TODO: 0: rs2 (fwd ALU/WB vs. rs2 mux), 1: ALU/WB, 2: ImmGen
     assign wb_mux = (wb_sel == 2'd0) ? mem_mux : mem_mux; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     // For forwarding ALU-WB and WB
-    assign aluwb_mux = (aluwb_sel == 1'd0) ? wb_mux : wb_mux; // TODO: 0: wb_mux, 1: ALU fwd
+    assign aluwb_mux = (aluwb_sel == 1'd0) ? wb_mux : alu_fwd; // TODO: 0: wb_mux, 1: ALU fwd
+    
+    //assign alu_fwd to the value of the ALU pipeline register after mem
+    assign alu_fwd = alu_ex2mw;
 
     assign bios_addra = pc_mux;
 
