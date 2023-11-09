@@ -122,7 +122,7 @@ always @(*) begin
             alu_sel = `ALU_BSEL;
             mem_wen = 0;
             mem_sel = 0;
-            wb_sel = 2'b01;
+            wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
         end

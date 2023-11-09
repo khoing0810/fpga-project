@@ -149,7 +149,7 @@ module control_tb();
         assert(a_sel == 1'd0) else $fatal("Test failed! a_sel is not correct for instruction %04x", inst);
         assert(b_sel == 1'd1) else $fatal("Test failed! b_sel is not correct for instruction %04x", inst);
         assert(reg_wen == 1) else $fatal("Test failed! reg_wen is not correct for instruction %04x.", reg_wen);
-        assert(wb_sel == 2'd1) else $fatal("Test failed! wb_sel is not correct for instruction %04x. curr wb_sel: %d\n", inst, wb_sel);
+        assert(wb_sel == 2'd0) else $fatal("Test failed! wb_sel is not correct for instruction %04x. curr wb_sel: %d\n", inst, wb_sel);
 
         inst = 32'h00010097; // auipc x1 16
         #(2)
