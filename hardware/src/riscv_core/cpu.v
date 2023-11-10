@@ -195,7 +195,7 @@ module cpu #(
 
           // PC
           pc <= pc_mux;
-          pc_id2ex <= pc - 4; // FOR THE LOVE OF GOD CHANGE THIS
+          pc_id2ex <= pc;
           pc_ex2mw <= pc_id2ex;
           
           // ID to EX
@@ -264,10 +264,10 @@ module cpu #(
     // IF/ID stage signals/values/modules 
     assign pc_sel = 3'd0; //TODO: change for hazards
     //assign pc_mux = (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC; // TODO: add jump_addr, branch_addr
-    assign bios_addra = pc[13:2];
-    assign imem_addrb = pc[15:2];
+    assign bios_addra = pc_mux[13:2];
+    assign imem_addrb = pc_mux[15:2];
     assign nop_sel = 1; //TODO: change for hazards
-    assign inst_mux = rst ? NOP : (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP; 
+    assign inst_mux = (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP;
     
     assign rs1_fwd_sel = 0; /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign rs2_fwd_sel = 0; /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
