@@ -185,6 +185,7 @@ module cpu_tb();
   initial begin
     `ifndef IVERILOG
         $vcdpluson;
+        $vcdplusmemon;
     `endif
     `ifdef IVERILOG
         $dumpfile("cpu_tb.fst");

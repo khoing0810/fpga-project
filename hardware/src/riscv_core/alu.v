@@ -34,12 +34,12 @@ always @(*) begin
             out_reg = (a_val_signed < b_val_signed) ? 1 : 0;
         end
         ALU_SLTU: out_reg = a_val < b_val ? 1 : 0;
-        ALU_SLL: out_reg = a_val << b_val;
-        ALU_SRL: out_reg = a_val >> b_val;
+        ALU_SLL: out_reg = a_val << b_val[4:0];
+        ALU_SRL: out_reg = a_val >> b_val[4:0];
         ALU_SRA: begin
             a_val_signed = a_val;
             b_val_signed = b_val;
-            out_reg = a_val_signed >>> b_val_signed;
+            out_reg = a_val_signed >>> b_val_signed[4:0];
         end
         ALU_BSEL: out_reg = b_val;
         default: out_reg = 0;

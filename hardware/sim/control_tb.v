@@ -4,7 +4,7 @@ module control_tb();
     
     // inputs
     reg [31:0] inst;
-    reg [31:0] pc;
+    //reg [31:0] pc;
     // reg br_eq;
     // reg br_lt;
 
@@ -24,7 +24,7 @@ module control_tb();
     // Instantiate Unit Under Test (UUT)
     control_logic dut (
         .inst(inst),
-        .pc(pc),
+        //.pc(pc),
         // .br_eq(br_eq),
         // .br_lt(br_lt),
         .reg_wen(reg_wen),
@@ -49,7 +49,7 @@ module control_tb();
         `endif
         // I-Type Test
         inst = 32'h00200013; // addi x0, x0, 2
-        pc = 4;
+        //pc = 4;
 
         #(2)
 

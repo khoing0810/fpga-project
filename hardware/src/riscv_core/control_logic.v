@@ -3,7 +3,7 @@
 
 module control_logic ( // ALL BASE SIGNALS ONLY (forwarding logic to be handled in CPU)
     input [31:0] inst,
-    input [31:0] pc,
+    //input [31:0] pc,
     // input br_eq,
     // input br_lt,
 
@@ -14,14 +14,14 @@ module control_logic ( // ALL BASE SIGNALS ONLY (forwarding logic to be handled 
     output reg b_sel,
     output reg [3:0] alu_sel,
     output reg [3:0] mem_wen, //MAY NOT NEED
-    output reg mem_sel,
+    output reg [2:0] mem_sel,
     output reg [1:0] wb_sel,
-    output reg csr_sel,
+    output reg [2:0] csr_sel,
     output reg csr_wen
 );
 
 wire [6:0] funct7;
-wire [3:0] funct3;
+wire [2:0] funct3;
 
 assign funct7 = inst[31:25];
 assign funct3 = inst[14:12];
