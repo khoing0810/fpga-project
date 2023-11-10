@@ -17,7 +17,7 @@ module cpu #(
 
     // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
-    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux; 
+    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
     wire [31:0] rs1_exmux, rs2_exmux, inst_mux, rs1_mux, rs2_mux; 
     // rs1_exmux = mux between rs1_id2ex and aluwb_mux
     // rs2_exmux = mux between rs2_id2ex and aluwb_mux
@@ -358,8 +358,16 @@ module cpu #(
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;
     assign mem_mux = (mem_sel == 3'd1) ? dmem_dout : dmem_dout; // TODO: 0: bios doutb, 1: dmem_dout, 2: cycle_counter, 3: inst_counter, 4: uart_dout 
-    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux : pc_ex2mw + 1; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
+    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 1; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     assign wd = wb_mux; // we are writing the value from the wb_mux to the register file
     assign wa = inst[2][11:7]; // we are writing to the rd register (reg_wen) already set
+
+    mem_decoder mem_decoder (
+        .inst(inst[2]),
+        .imm(alu_ex2mw),
+        .mem_mux(mem_mux),
+        .mem_wen(),
+        .mem_mux_wb(mem_mux_wb)
+    );
 
 endmodule
