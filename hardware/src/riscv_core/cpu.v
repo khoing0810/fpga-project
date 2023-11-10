@@ -195,7 +195,7 @@ module cpu #(
 
           // PC
           pc <= pc_mux;
-          pc_id2ex <= pc;
+          pc_id2ex <= pc - 4; // FOR THE LOVE OF GOD CHANGE THIS
           pc_ex2mw <= pc_id2ex;
           
           // ID to EX
@@ -317,13 +317,17 @@ module cpu #(
         .br_lt() //TODO: use this value
     );
 
+    mem_decoder mem_decoder_pre ( // used to set mem_wen and dmem_din before the dmem_dout is set
+        .inst(inst[1]),
+        .imm(alu_out),
+        .mem_mux(rs2_exmux),
+        .mem_wen(mem_wen),
+        .mem_mux_wb(dmem_din)
+    );
+
     assign dmem_addr = alu_out[15:2];
-    assign dmem_din = rs2_exmux;
     assign dmem_en = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) ? 1 : 0;
-    assign dmem_we = (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) ? 4'b1111 :
-                     (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SH) ? (alu_ex2mw[1:0] == 2'b00 ? 4'b0011 : 4'b1100) :
-                     (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SB) ? 4'b0001 << (alu_ex2mw[1:0]) :
-                     4'b0000; // TODO: debug this for SH and maybe SB
+    assign dmem_we = mem_wen;
 
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;
@@ -331,12 +335,12 @@ module cpu #(
     assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     assign wd = wb_mux; // we are writing the value from the wb_mux to the register file
     assign wa = inst[2][11:7]; // we are writing to the rd register (reg_wen) already set
-
-    mem_decoder mem_decoder (
+    
+    mem_decoder mem_decoder_post ( // used to set mem_mux_wb after the dmem_dout is set
         .inst(inst[2]),
         .imm(alu_ex2mw),
         .mem_mux(mem_mux),
-        .mem_wen(mem_wen),
+        .mem_wen(),
         .mem_mux_wb(mem_mux_wb)
     );
 
