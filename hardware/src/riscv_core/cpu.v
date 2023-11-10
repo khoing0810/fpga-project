@@ -181,10 +181,10 @@ module cpu #(
         //   bios_addrb <= 0;
         //   bios_doutb <= 0;
         pc <= RESET_PC;
-        inst[0] = NOP;
-        inst[1] = NOP;
-        inst[2] = NOP;
-        inst[3] = NOP;
+        inst[0] <= NOP;
+        inst[1] <= NOP;
+        inst[2] <= NOP;
+        inst[3] <= NOP;
       end
       else begin
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
@@ -299,7 +299,7 @@ module cpu #(
     assign bios_addra = pc[11:0];
     assign imem_addrb = pc[13:0];
     assign nop_sel = 1; //TODO: change for hazards
-    assign inst_mux = (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP; 
+    assign inst_mux = rst ? NOP : (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP; 
     
     assign rs1_fwd_sel = 0; /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign rs2_fwd_sel = 0; /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
