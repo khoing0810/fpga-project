@@ -225,7 +225,6 @@ module cpu #(
         .a_sel(),
         .b_sel(),
         .alu_sel(),
-        .mem_wen(),
         .mem_sel(),
         .wb_sel(),
         .csr_sel(),
@@ -236,7 +235,7 @@ module cpu #(
     control_logic control_logic2 (
         .inst(inst[1]),
         .alu_sel(alu_sel),
-        .mem_wen(mem_wen), // should put mem signals in the EX stage because we need to set that value before we get to the mem stage
+        // .mem_wen(mem_wen), // should put mem signals in the EX stage because we need to set that value before we get to the mem stage
         .mem_sel(mem_sel),
         .a_sel(a_sel),
         .b_sel(b_sel),
@@ -260,41 +259,9 @@ module cpu #(
         .a_sel(),
         .b_sel(),
         .alu_sel(),
-        .mem_wen(),
         .mem_sel()
     );
 
-    
-
-/*
-    wire [31:0] mem_mux_wb;
-    
-    always @(*) begin
-        if (inst[6:0] == `OPC_STORE) begin
-            case (funct3)
-                `FNC_SB: mem_wen = 4'b0001 << (imm_gen_id2ex % 4);
-                `FNC_SH: mem_wen = 4'b0011 << (imm_gen_id2ex % 4);
-                `FNC_SW: mem_wen = 4'b1111;
-                default: mem_wen = 4'b0000;
-            endcase
-        end
-        else if (inst[6:0] == `OPC_LOAD) begin
-            case (funct3)
-                `FNC_LB: mem_mux_wb = {{24{mem_mux[(imm_gen_id2ex % 4)*8+7]}}, 
-                                        mem_mux[(imm_gen_id2ex % 4)*8+7:(imm_gen_id2ex % 4)*8]};
-                `FNC_LH: mem_mux_wb = {{16{mem_mux[(imm_gen_id2ex % 4)*8+15]}},
-                                        mem_mux[(imm_gen_id2ex % 4)*8+15:(imm_gen_id2ex % 4)*8]};
-                `FNC_LW: mem_mux_wb = mem_mux;
-                default: mem_mux_wb = 0;
-            endcase
-        end
-        else begin
-            mem_wen = 4'b0000;
-            mem_mux = 0;
-        end
-        
-    end
-*/
     // IF/ID stage signals/values/modules 
     assign pc_sel = 3'd0; //TODO: change for hazards
     //assign pc_mux = (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC; // TODO: add jump_addr, branch_addr
@@ -366,7 +333,7 @@ module cpu #(
         .inst(inst[2]),
         .imm(alu_ex2mw),
         .mem_mux(mem_mux),
-        .mem_wen(),
+        .mem_wen(mem_wen),
         .mem_mux_wb(mem_mux_wb)
     );
 
