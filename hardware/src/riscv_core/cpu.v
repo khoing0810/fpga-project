@@ -21,7 +21,7 @@ module cpu #(
     wire [31:0] rs1_exmux, rs2_exmux, inst_mux, rs1_mux, rs2_mux; 
     // rs1_exmux = mux between rs1_id2ex and aluwb_mux
     // rs2_exmux = mux between rs2_id2ex and aluwb_mux
-    // inst_mux = mux between bios_douta and imem_doutb and NOP
+    // inst_mux = mux between (bios_douta and imem_doutb) and NOP
     // rs1_mux = mux between ra1 and aluwb_mux
     // rs2_mux = mux between ra2 and aluwb_mux
 
@@ -46,6 +46,7 @@ module cpu #(
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
     reg [31:0] imm_gen_id2ex; // immediate from the ID stage
+    reg [31:0] imm_gen_ex2mw; // immediate from the EX stage
     
     reg [31:0] pc_id2ex; // PC from the ID stage
     reg [31:0] pc_ex2mw; // PC from the EX stage
@@ -205,6 +206,7 @@ module cpu #(
         
           // EX to MEM
           alu_ex2mw <= alu_out;
+          imm_gen_ex2mw <= imm_gen_id2ex;
 
           // Instruction and cycle counters
           if (inst[3] != NOP) begin
@@ -349,8 +351,9 @@ module cpu #(
         .br_lt() //TODO: use this value
     );
 
-    assign dmem_addr = alu_out[13:0];
+    assign dmem_addr = alu_out[15:2];
     assign dmem_din = rs2_exmux;
+    assign dmem_en = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) ? 1 : 0;
 
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;
