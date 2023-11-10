@@ -68,7 +68,7 @@ module cpu #(
     wire a_sel;
     wire b_sel;
     wire [3:0] alu_sel;
-    wire [3:0] mem_wen; // MAY NEED TO CALCULATE IN CPU ITSELF
+    reg [3:0] mem_wen;
     wire [2:0] csr_sel;
     wire [1:0] wb_sel;
     wire csr_wen;
@@ -235,7 +235,6 @@ module cpu #(
     control_logic control_logic2 (
         .inst(inst[1]),
         .alu_sel(alu_sel),
-        // .mem_wen(mem_wen), // should put mem signals in the EX stage because we need to set that value before we get to the mem stage
         .mem_sel(mem_sel),
         .a_sel(a_sel),
         .b_sel(b_sel),
@@ -321,6 +320,10 @@ module cpu #(
     assign dmem_addr = alu_out[15:2];
     assign dmem_din = rs2_exmux;
     assign dmem_en = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) ? 1 : 0;
+    assign dmem_we = (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) ? 4'b1111 :
+                     (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SH) ? (alu_ex2mw[1:0] == 2'b00 ? 4'b0011 : 4'b1100) :
+                     (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SB) ? 4'b0001 << (alu_ex2mw[1:0]) :
+                     4'b0000; // TODO: debug this for SH and maybe SB
 
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;

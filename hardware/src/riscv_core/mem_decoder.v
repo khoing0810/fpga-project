@@ -10,27 +10,30 @@ reg start_addr = 0; // for setting the start of the address
 reg end_addr = 0; // for setting the end of the address
 always @(*) begin
     if (inst[6:0] == `OPC_STORE) begin
-            case (inst[14:12])
-                // `FNC_SB: mem_wen = 4'b0001 << (imm % 4);
-                // `FNC_SH: mem_wen = 4'b0011 << (imm % 4);
-                // `FNC_SW: mem_wen = 4'b1111;
-                `FNC_SB: begin
-                    case (imm[1:0])
-                        2'b00: mem_wen = 4'b0001;
-                        2'b01: mem_wen = 4'b0010;
-                        2'b10: mem_wen = 4'b0100;
-                        2'b11: mem_wen = 4'b1000;
-                    endcase
-                end
-                `FNC_SH: begin
-                    case (imm[1:0])
-                        2'b00: mem_wen = 4'b0011;
-                        2'b10: mem_wen = 4'b1100;
-                    endcase
-                end
-                `FNC_SW: mem_wen = 4'b1111;
-                default: mem_wen = 4'b0000;
-            endcase
+        case (inst[14:12])
+            // `FNC_SB: mem_wen = 4'b0001 << (imm % 4);
+            // `FNC_SH: mem_wen = 4'b0011 << (imm % 4);
+            // `FNC_SW: mem_wen = 4'b1111;
+            `FNC_SB: begin
+                case (imm[1:0])
+                    2'b00: mem_wen = 4'b0001;
+                    2'b01: mem_wen = 4'b0010;
+                    2'b10: mem_wen = 4'b0100;
+                    2'b11: mem_wen = 4'b1000;
+                endcase
+            end
+            `FNC_SH: begin
+                case (imm[1:0])
+                    2'b00: mem_wen = 4'b0011;
+                    2'b10: mem_wen = 4'b1100;
+                    default: mem_wen = 4'b0000;
+                endcase
+            end
+            `FNC_SW: mem_wen = 4'b1111;
+            default: mem_wen = 4'b0000;
+        endcase
+        mem_mux_wb = 0;
+        $display("inst[14:12] == %d; mem_wen == %d", inst[14:12], mem_wen);
     end
     else if (inst[6:0] == `OPC_LOAD) begin
         case (inst[14:12])
