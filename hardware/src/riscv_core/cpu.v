@@ -298,8 +298,8 @@ module cpu #(
     // IF/ID stage signals/values/modules 
     assign pc_sel = 3'd0; //TODO: change for hazards
     //assign pc_mux = (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC; // TODO: add jump_addr, branch_addr
-    assign bios_addra = pc[11:0];
-    assign imem_addrb = pc[13:0];
+    assign bios_addra = pc[13:2];
+    assign imem_addrb = pc[15:2];
     assign nop_sel = 1; //TODO: change for hazards
     assign inst_mux = rst ? NOP : (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP; 
     
@@ -320,7 +320,7 @@ module cpu #(
     );
 
     always @(*) begin // Used because of combinational logic
-        pc_mux = rst ? RESET_PC: (pc_sel == 3'd0) ? pc + 1 : (pc_sel == 3'd1) ? alu_out: RESET_PC;
+        pc_mux = rst ? RESET_PC: (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC;
         inst[0] = inst_mux;
     end
 
@@ -358,7 +358,7 @@ module cpu #(
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;
     assign mem_mux = (mem_sel == 3'd1) ? dmem_dout : dmem_dout; // TODO: 0: bios doutb, 1: dmem_dout, 2: cycle_counter, 3: inst_counter, 4: uart_dout 
-    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 1; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
+    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     assign wd = wb_mux; // we are writing the value from the wb_mux to the register file
     assign wa = inst[2][11:7]; // we are writing to the rd register (reg_wen) already set
 
