@@ -26,6 +26,8 @@ module cpu #(
     // rs2_mux = mux between ra2 and aluwb_mux
     wire [31:0] csr_mux, csr_we_mux;
 
+    wire [31:0] inst_0, inst_1, inst_2, inst_3;
+
 
 
     // Signals/values determined in CPU
@@ -59,6 +61,12 @@ module cpu #(
     reg [31:0] cycle_count = 0; // number of cycles executed
     reg [31:0] instruction_counter = 0; // number of cycles executed
     reg [31:0] tohost_csr = 0; // tohost CSR
+
+    //DEBUGGING
+    assign inst_0 = inst[0];
+    assign inst_1 = inst[1];
+    assign inst_2 = inst[2];
+    assign inst_3 = inst[3];
 
    
 
@@ -184,7 +192,7 @@ module cpu #(
         //   bios_addrb <= 0;
         //   bios_doutb <= 0;
         pc <= RESET_PC;
-        inst[0] <= NOP;
+        //inst[0] <= NOP;
         inst[1] <= NOP;
         inst[2] <= NOP;
         inst[3] <= NOP;
@@ -283,11 +291,12 @@ module cpu #(
                         (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
                         3'd0; //TODO: change for hazards
     assign bios_addra = pc_mux[13:2];
+    assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
     assign nop_sel = ((inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_BRANCH)) ? 1'b1 : 1'b0;
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
-    assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
+    assign inst_mux = (nop_sel == 1'b0 || rst) ? bios_imem_mux : NOP;
     
     //ID forwarding signals (used to handle instructions two cycles apart)
     assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;

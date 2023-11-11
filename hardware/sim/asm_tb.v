@@ -46,6 +46,7 @@ module asm_tb();
 
     `ifndef IVERILOG
         $vcdpluson;
+        $vcdplusmemon;
     `endif
     `ifdef IVERILOG
         $dumpfile("asm_tb.fst");
