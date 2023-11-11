@@ -21,8 +21,7 @@ always @(*) begin
     b_val_signed = b_val;
     b_val_unsigned = b_val;
 
-    br_eq = br_un ? a_val_unsigned == b_val_unsigned :
-                    a_val_signed == b_val_signed;
+    br_eq = a_val == b_val;
     br_lt = br_un ? a_val_unsigned < b_val_unsigned :
                     a_val_signed < b_val_signed;
 end

@@ -24,6 +24,7 @@ module cpu #(
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
     // rs1_mux = mux between ra1 and aluwb_mux
     // rs2_mux = mux between ra2 and aluwb_mux
+    wire [31:0] csr_mux, csr_we_mux;
 
 
 
@@ -214,6 +215,9 @@ module cpu #(
             instruction_counter <= instruction_counter + 1;
           end
           cycle_count <= cycle_count + 1;
+
+          // CSR
+          tohost_csr <= csr_we_mux;
       end
     end
 
@@ -243,8 +247,8 @@ module cpu #(
         .reg_wen(),
         .br_un(br_un),
         .wb_sel(),
-        .csr_sel(),
-        .csr_wen()
+        .csr_sel(csr_sel),
+        .csr_wen(csr_wen)
     ); 
 
     // MEM+WB+IF stage
@@ -252,8 +256,8 @@ module cpu #(
         .inst(inst[2]),
         .reg_wen(we),
         .wb_sel(wb_sel),
-        .csr_sel(csr_sel),
-        .csr_wen(csr_wen),
+        .csr_sel(),
+        .csr_wen(),
         .imm_sel(),
         .br_un(),
         .a_sel(),
@@ -360,5 +364,9 @@ module cpu #(
         .mem_wen(),
         .mem_mux_wb(mem_mux_wb)
     );
+
+    // CSR
+    assign csr_mux = csr_sel ? imm_gen_id2ex : rs1_id2ex; //TODO: may need to change to rs1_id2ex_nomux
+    assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
 
 endmodule
