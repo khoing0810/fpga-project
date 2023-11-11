@@ -9,9 +9,9 @@ module reg_file (
     reg [31:0] mem [0:31];
     reg [31:0] rd1_reg;
     reg [31:0] rd2_reg;
+    integer i;
     initial begin
         // TODO: double check these on lab computers!
-        integer i;
         for (i = 0; i < DEPTH; i = i + 1) begin
             mem[i] = 0;
         end

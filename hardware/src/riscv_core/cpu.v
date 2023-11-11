@@ -18,7 +18,7 @@ module cpu #(
     // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
     wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
-    wire [31:0] rs1_exmux, rs2_exmux, inst_mux, rs1_mux, rs2_mux; 
+    wire [31:0] rs1_exmux, rs2_exmux, inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
     // rs1_exmux = mux between rs1_id2ex and aluwb_mux
     // rs2_exmux = mux between rs2_id2ex and aluwb_mux
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
@@ -72,6 +72,7 @@ module cpu #(
     wire [2:0] csr_sel;
     wire [1:0] wb_sel;
     wire csr_wen;
+    wire br_eq, br_lt, taken;
     
     
     initial begin
@@ -217,7 +218,7 @@ module cpu #(
     end
 
     // ID stage
-    control_logic control_logic1 ( // only need imm_sel since that is the only signal that we need in this stage
+    control_logic control_logicID ( // only need imm_sel since that is the only signal that we need in this stage
         .inst(inst[0]),
         .imm_sel(imm_sel),
         .reg_wen(),
@@ -232,7 +233,7 @@ module cpu #(
     );
 
     // EX stage
-    control_logic control_logic2 (
+    control_logic control_logicEX (
         .inst(inst[1]),
         .alu_sel(alu_sel),
         .mem_sel(mem_sel),
@@ -240,14 +241,14 @@ module cpu #(
         .b_sel(b_sel),
         .imm_sel(),
         .reg_wen(),
-        .br_un(),
+        .br_un(br_un),
         .wb_sel(),
         .csr_sel(),
         .csr_wen()
     ); 
 
     // MEM+WB+IF stage
-    control_logic control_logic3 (
+    control_logic control_logicWB (
         .inst(inst[2]),
         .reg_wen(we),
         .wb_sel(wb_sel),
@@ -262,12 +263,27 @@ module cpu #(
     );
 
     // IF/ID stage signals/values/modules 
-    assign pc_sel = 3'd0; //TODO: change for hazards
-    //assign pc_mux = (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC; // TODO: add jump_addr, branch_addr
+    always @(*) begin // Used because of combinational logic
+        pc_mux = rst ? RESET_PC: 
+                    (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
+                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR/BRANCH handling)
+                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling)
+                    (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
+                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch taken (BRANCH handling)
+                    RESET_PC;
+        inst[0] = inst_mux;
+    end
+    assign pc_sel = (inst[0][6:0] == `OPC_JAL) ? 3'd2: 
+                        (inst[0][6:0] == `OPC_JALR) ? 3'd3: 
+                        (inst[1][6:0] == `OPC_JALR || taken) ? 3'd1:
+                        (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
+                        3'd0; //TODO: change for hazards
     assign bios_addra = pc_mux[13:2];
     assign imem_addrb = pc_mux[15:2];
-    assign nop_sel = 1; //TODO: change for hazards
-    assign inst_mux = (nop_sel == 1'b1) ? (pc[30] == 1'b1 ? bios_douta : imem_doutb) : NOP;
+    assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
+    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_BRANCH)) ? 1'b1 : 1'b0;
+        // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
+    assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
     assign rs1_fwd_sel = 0; /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign rs2_fwd_sel = 0; /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
@@ -281,23 +297,18 @@ module cpu #(
 
     imm_gen imm_gen (
         .inst(inst_mux),
-        .imm_sel(imm_sel), //TODO
+        .imm_sel(imm_sel),
         .imm(imm)
     );
-
-    always @(*) begin // Used because of combinational logic
-        pc_mux = rst ? RESET_PC: (pc_sel == 3'd0) ? pc + 4 : (pc_sel == 3'd1) ? alu_out: RESET_PC;
-        inst[0] = inst_mux;
-    end
 
     // EX/intoMEM stage signals/values/modules
     assign a_mux = (a_sel == 1'd0) ? rs1_exmux : pc_id2ex;
     assign b_mux = (b_sel == 1'd0) ? rs2_exmux : imm_gen_id2ex;
 
     // EX forwarding signals
-    assign rs1ex_sel = 0; /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign rs2ex_sel = 0; /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign aluwb_sel = 0; /*(wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
+    assign rs1ex_sel = 0; /* (rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
+    assign rs2ex_sel = 0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
+    assign aluwb_sel = 0; /* (wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
 
     assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
     assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : aluwb_mux;
@@ -313,10 +324,16 @@ module cpu #(
         .a_val(rs1_exmux), // TODO: NEEDS TO BE THE FORWARDED VALUE
         .b_val(rs2_exmux), // TODO: NEEDS TO BE THE FORWARDED VALUE
         .br_un(br_un),
-        .br_eq(), //TODO: use this values
-        .br_lt() //TODO: use this value
+        .br_eq(br_eq),
+        .br_lt(br_lt)
     );
-
+    
+    taken_branch taken_branch (
+        .inst(inst[1]),
+        .br_eq(br_eq),
+        .br_lt(br_lt),
+        .taken(taken)
+    );
     mem_decoder mem_decoder_pre ( // used to set mem_wen and dmem_din before the dmem_dout is set
         .inst(inst[1]),
         .imm(alu_out),
