@@ -202,8 +202,8 @@ module cpu #(
           
           // ID to EX
           rs1_id2ex_nomux <= rd1;
-          rs1_id2ex <= rd1; // TODO: add forwarding logic
-          rs2_id2ex <= rd2; // TODO: add forwarding logic
+          rs1_id2ex <= rs1_mux; // TODO: add forwarding logic
+          rs2_id2ex <= rs2_mux; // TODO: add forwarding logic
           imm_gen_id2ex <= imm;
         
           // EX to MEM
@@ -289,15 +289,18 @@ module cpu #(
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
-    assign rs1_fwd_sel = 0; /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign rs2_fwd_sel = 0; /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
+    //ID forwarding signals (used to handle instructions two cycles apart)
+    assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
+    /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
+    assign rs2_fwd_sel = inst[0][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
+    /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign ra1 = inst_mux[19:15];
     assign ra2 = inst_mux[24:20];
     
 
-    assign aluwb_mux = (aluwb_sel == 1'd0) ? wb_mux : alu_fwd;
-    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
-    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rs2_id2ex : aluwb_mux;
+    assign aluwb_mux = wb_mux;
+    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : aluwb_mux;
+    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : aluwb_mux;
 
     imm_gen imm_gen (
         .inst(inst_mux),
@@ -309,9 +312,10 @@ module cpu #(
     assign a_mux = (a_sel == 1'd0) ? rs1_exmux : pc_id2ex;
     assign b_mux = (b_sel == 1'd0) ? rs2_exmux : imm_gen_id2ex;
 
-    // EX forwarding signals
-    assign rs1ex_sel = 0; /* (rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign rs2ex_sel = 0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
+    // EX forwarding signals (used to handle instructions one cycle apart)
+    assign rs1ex_sel = inst[1][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
+    /* (rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
+    assign rs2ex_sel = inst[1][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign aluwb_sel = 0; /* (wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
 
     assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
@@ -325,8 +329,8 @@ module cpu #(
     );
 
     bcmp bcmp (
-        .a_val(rs1_exmux), // TODO: NEEDS TO BE THE FORWARDED VALUE
-        .b_val(rs2_exmux), // TODO: NEEDS TO BE THE FORWARDED VALUE
+        .a_val(rs1_exmux),
+        .b_val(rs2_exmux),
         .br_un(br_un),
         .br_eq(br_eq),
         .br_lt(br_lt)
