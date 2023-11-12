@@ -379,7 +379,7 @@ module cpu #(
     );
 
     // CSR
-    assign csr_mux = csr_sel ? imm_gen_id2ex : rs1_id2ex; //TODO: may need to change to rs1_id2ex_nomux
+    assign csr_mux = csr_sel ? imm_gen_id2ex : rs1_exmux;
     assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
 
 endmodule
