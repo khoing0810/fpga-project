@@ -58,7 +58,10 @@ always @(*) begin
                 mem_wen = 4'b1111;
                 mem_mux_wb = mem_mux;
             end
-            default: mem_wen = 4'b0000;
+            default: begin
+                mem_wen = 4'b0000;
+                mem_mux_wb = 32'd0;
+            end
         endcase
        // $display("inst[14:12] == %d; mem_wen == %d", inst[14:12], mem_wen);
     end

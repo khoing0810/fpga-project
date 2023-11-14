@@ -204,6 +204,8 @@ module cpu #(
         inst[1] <= NOP;
         inst[2] <= NOP;
         inst[3] <= NOP;
+        instruction_counter <= 0;
+        cycle_counter <= 0;
       end
       else begin
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
@@ -227,13 +229,13 @@ module cpu #(
           imm_gen_ex2mw <= imm_gen_id2ex;
 
           // Instruction and cycle counters
-          if (inst[0][6:0] == `OPC_STORE && inst[0][14:12] == `FNC_SW) begin
+          if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
                 instruction_counter <= 0;
-          end else if (inst[3] != NOP) begin
+          end else if (inst[1] != NOP) begin
                 instruction_counter <= instruction_counter + 1;
           end
 
-          if (inst[0][6:0] == `OPC_STORE && inst[0][14:12] == `FNC_SW) begin
+          if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
              cycle_counter <= 0;
           end else begin
              cycle_counter <= cycle_counter + 1;
