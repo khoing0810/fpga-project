@@ -56,9 +56,11 @@ module cpu #(
     
     reg [31:0] alu_ex2mw; // ALU result from the EX stage
 
+    reg [31:0] rs2_exmux_to_mem; // rs2 value from the EX stage (muxed)
+
     // Extra registers
     reg [31:0] pc = RESET_PC; // program counter
-    reg [31:0] cycle_count = 0; // number of cycles executed
+    reg [31:0] cycle_counter = 0; // number of cycles executed
     reg [31:0] instruction_counter = 0; // number of cycles executed
     reg [31:0] tohost_csr = 0; // tohost CSR
 
@@ -157,10 +159,23 @@ module cpu #(
     wire [7:0] uart_rx_data_out;
     wire uart_rx_data_out_valid;
     wire uart_rx_data_out_ready;
+    assign uart_rx_data_out_ready = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_LOAD;
+    
     //// UART Transmitter
     wire [7:0] uart_tx_data_in;
     wire uart_tx_data_in_valid;
+    //assign uart_tx_data_in_valid = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_STORE;
+    assign uart_tx_data_in_valid = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_STORE;
+    
+    assign uart_tx_data_in = alu_out == 32'h80000008 ? rs2_exmux[7:0] : 0;
+    //assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0]: 8'd0;
+
     wire uart_tx_data_in_ready;
+    wire [31:0] uart_dout;
+    assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
+                       alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
+                       //alu_ex2mw == 32'h80000008 ? {24'b0, uart_tx_data_in} : 
+                       32'd0;
     uart #(
         .CLOCK_FREQ(CPU_CLOCK_FREQ),
         .BAUD_RATE(BAUD_RATE)
@@ -188,11 +203,7 @@ module cpu #(
 
     always @(posedge clk) begin
       if (rst) begin
-        //   bios_ena <= 0;
-        //   bios_addrb <= 0;
-        //   bios_doutb <= 0;
         pc <= RESET_PC;
-        //inst[0] <= NOP;
         inst[1] <= NOP;
         inst[2] <= NOP;
         inst[3] <= NOP;
@@ -201,7 +212,6 @@ module cpu #(
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
           inst[2] <= inst[1]; // move the instruction from the ID stage to the EX stage
           inst[3] <= inst[2]; // move the instruction from the EX stage to the MEM stage
-          // (inst[0] is set in always (*)) // inst[0] <= inst_mux;
 
           // PC
           pc <= pc_mux;
@@ -210,20 +220,32 @@ module cpu #(
           
           // ID to EX
           rs1_id2ex_nomux <= rd1;
-          rs1_id2ex <= rs1_mux; // TODO: add forwarding logic
-          rs2_id2ex <= rs2_mux; // TODO: add forwarding logic
+          rs1_id2ex <= rs1_mux;
+          rs2_id2ex <= rs2_mux;
           imm_gen_id2ex <= imm;
         
           // EX to MEM
+          rs2_exmux_to_mem <= rs2_exmux;
           alu_ex2mw <= alu_out;
           imm_gen_ex2mw <= imm_gen_id2ex;
 
           // Instruction and cycle counters
-          if (inst[3] != NOP) begin
-            instruction_counter <= instruction_counter + 1;
+          if (inst[0][6:0] == `OPC_STORE && inst[0][14:12] == `FNC_SW) begin
+                instruction_counter <= 0;
+          end else if (inst[3] != NOP) begin
+                instruction_counter <= instruction_counter + 1;
           end
-          cycle_count <= cycle_count + 1;
 
+          if (inst[0][6:0] == `OPC_STORE && inst[0][14:12] == `FNC_SW) begin
+             cycle_counter <= 0;
+          end else begin
+             cycle_counter <= cycle_counter + 1;
+          end
+
+          if (alu_out == 32'h80000018) begin
+            instruction_counter <= 0;
+            cycle_counter <= 0;
+          end
           // CSR
           tohost_csr <= csr_we_mux;
       end
@@ -248,7 +270,7 @@ module cpu #(
     control_logic control_logicEX (
         .inst(inst[1]),
         .alu_sel(alu_sel),
-        .mem_sel(mem_sel),
+        .mem_sel(),
         .a_sel(a_sel),
         .b_sel(b_sel),
         .imm_sel(),
@@ -289,7 +311,7 @@ module cpu #(
                         (inst[0][6:0] == `OPC_JALR) ? 3'd3: 
                         (inst[1][6:0] == `OPC_JALR || taken) ? 3'd1:
                         (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
-                        3'd0; //TODO: change for hazards
+                        3'd0;
     assign bios_addra = pc_mux[13:2];
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
@@ -360,12 +382,31 @@ module cpu #(
     );
 
     assign dmem_addr = alu_out[15:2];
-    assign dmem_en = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) ? 1 : 0;
+    assign dmem_en = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) && (alu_out[31:30] == 2'd0 && alu_out[28] == 1'b1) ? 1 : 0;
     assign dmem_we = mem_wen;
+
+    assign bios_addrb = alu_out[13:2];
+    assign bios_enb = (alu_out[31:28] == 4'b0100);
+
+    assign imem_addra = alu_out[15:2];
+    assign imem_dina = rs2_exmux;
+    assign imem_ena = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) && (pc_id2ex[30] == 1'b1) && (alu_out[31:29] == 3'b001);
+    assign imem_wea = mem_wen;
 
     // MEM/WB stage signals/values/modules
     assign alu_fwd = alu_ex2mw;
-    assign mem_mux = (mem_sel == 3'd1) ? dmem_dout : dmem_dout; // TODO: 0: bios doutb, 1: dmem_dout, 2: cycle_counter, 3: inst_counter, 4: uart_dout 
+    //assign mem_mux = (mem_sel == 3'd1) ? dmem_dout : dmem_dout; // TODO: 0: bios doutb, 1: dmem_dout, 2: cycle_counter, 3: inst_counter, 4: uart_dout, 5: imem_doutb
+    assign mem_sel = alu_ex2mw[31:28] == 4'b0100 ? 3'd0: 
+                     (alu_ex2mw[31:30] == 2'b00 && alu_ex2mw[28] == 1'b1) ? 3'd1:
+                     (alu_ex2mw == 32'h80000010) ? 3'd2:
+                     (alu_ex2mw == 32'h80000014) ? 3'd3:
+                     (alu_ex2mw[31:28] == 4'b1000) ? 3'd4: 3'd1;
+
+    assign mem_mux = (mem_sel == 3'd0) ? bios_doutb :
+                     (mem_sel == 3'd1) ? dmem_dout :
+                     (mem_sel == 3'd2) ? cycle_counter :
+                     (mem_sel == 3'd3) ? instruction_counter :
+                     (mem_sel == 3'd4) ? uart_dout : dmem_dout;
     assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     assign wd = wb_mux; // we are writing the value from the wb_mux to the register file
     assign wa = inst[2][11:7]; // we are writing to the rd register (reg_wen) already set

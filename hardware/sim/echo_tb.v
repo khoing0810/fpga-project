@@ -105,6 +105,7 @@ module echo_tb();
 
     `ifndef IVERILOG
         $vcdpluson;
+        $vcdplusmemon;
     `endif
     `ifdef IVERILOG
         $dumpfile("echo_tb.fst");
