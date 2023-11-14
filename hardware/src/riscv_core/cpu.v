@@ -159,22 +159,19 @@ module cpu #(
     wire [7:0] uart_rx_data_out;
     wire uart_rx_data_out_valid;
     wire uart_rx_data_out_ready;
-    assign uart_rx_data_out_ready = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_LOAD;
+    assign uart_rx_data_out_ready = alu_out == 32'h80000004 && inst[1][6:0] == `OPC_LOAD;
     
     //// UART Transmitter
     wire [7:0] uart_tx_data_in;
     wire uart_tx_data_in_valid;
-    //assign uart_tx_data_in_valid = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_STORE;
-    assign uart_tx_data_in_valid = alu_out[31:28] == 4'd8 && inst[1][6:0] == `OPC_STORE;
-    
-    assign uart_tx_data_in = alu_out == 32'h80000008 ? rs2_exmux[7:0] : 0;
-    //assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0]: 8'd0;
-
     wire uart_tx_data_in_ready;
+    assign uart_tx_data_in_valid = alu_out == 32'h80000008 && inst[1][6:0] == `OPC_STORE;
+    
+    assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0] : 0;
+
     wire [31:0] uart_dout;
     assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
                        alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
-                       //alu_ex2mw == 32'h80000008 ? {24'b0, uart_tx_data_in} : 
                        32'd0;
     uart #(
         .CLOCK_FREQ(CPU_CLOCK_FREQ),
