@@ -229,21 +229,28 @@ module cpu #(
           imm_gen_ex2mw <= imm_gen_id2ex;
 
           // Instruction and cycle counters
-          if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
-                instruction_counter <= 0;
-          end else if (inst[1] != NOP) begin
-                instruction_counter <= instruction_counter + 1;
-          end
+        //   if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
+        //         instruction_counter <= 0;
+        //   end else if (inst[1] != NOP) begin
+        //         instruction_counter <= instruction_counter + 1;
+        //   end
 
-          if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
-             cycle_counter <= 0;
-          end else begin
-             cycle_counter <= cycle_counter + 1;
-          end
+        //   if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
+        //      cycle_counter <= 0;
+        //   end else begin
+        //      cycle_counter <= cycle_counter + 1;
+        //   end
 
-          if (alu_out == 32'h80000018) begin
+          if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
             instruction_counter <= 0;
             cycle_counter <= 0;
+          end
+          else if (inst[1] == NOP) begin
+            cycle_counter <= cycle_counter + 1;
+          end
+          else begin
+            cycle_counter <= cycle_counter + 1;
+            instruction_counter <= instruction_counter + 1;
           end
           // CSR
           tohost_csr <= csr_we_mux;
@@ -299,23 +306,23 @@ module cpu #(
     always @(*) begin // Used because of combinational logic
         pc_mux = rst ? RESET_PC: 
                     (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
-                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR/BRANCH handling)
-                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling)
+                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
+                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
                     (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
-                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch taken (BRANCH handling)
+                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
                     RESET_PC;
         inst[0] = inst_mux;
     end
-    assign pc_sel = (inst[0][6:0] == `OPC_JAL) ? 3'd2: 
+    assign pc_sel = (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_BRANCH) ? 3'd2: 
                         (inst[0][6:0] == `OPC_JALR) ? 3'd3: 
-                        (inst[1][6:0] == `OPC_JALR || taken) ? 3'd1:
+                        (inst[1][6:0] == `OPC_JALR) ? 3'd1:
                         (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
                         3'd0;
     assign bios_addra = pc_mux[13:2];
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
-    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_BRANCH)) ? 1'b1 : 1'b0;
+    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken))) ? 1'b1 : 1'b0;
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0 || rst) ? bios_imem_mux : NOP;
     
