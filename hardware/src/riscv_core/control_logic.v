@@ -84,15 +84,6 @@ always @(*) begin
             csr_wen = 0;
         end
         `OPC_STORE: begin // store
-            case (funct3)
-                `FNC_SB: begin
-                    
-                end
-                `FNC_SH: begin
-                end
-                `FNC_SW: begin
-                end
-            endcase
             reg_wen = 0;
             imm_sel = 3'b001;
             br_un = 0;

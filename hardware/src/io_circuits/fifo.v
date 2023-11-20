@@ -34,8 +34,8 @@ module fifo #(
             for (i = 0; i < DEPTH; i = i + 1) begin
                 buffer[i] = 0;
             end
-            wr_ptr <= 0;
-            rd_ptr <= 0;
+            wr_ptr = 0;
+            rd_ptr = 0;
             full_reg <= 0;
             empty_reg <= 1;
             dout_reg <= 0;
