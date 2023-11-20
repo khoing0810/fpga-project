@@ -6,6 +6,27 @@ module sigma_delta_dac #(
     input [CODE_WIDTH-1:0] code,
     output pwm
 );
-    // Remove this line once you have implemented this module
-    assign pwm = 0;
+    reg [CODE_WIDTH:0] acc_prev = 0;
+    reg [CODE_WIDTH:0] acc = 0;
+    reg pwm_reg = 0;
+    
+    always @(*) begin
+        if (rst) begin
+            acc_prev = 0;
+        end else begin
+            acc_prev = acc + code;
+        end
+    end
+    always @(posedge clk) begin
+        if (rst) begin
+            acc <= 0;
+            pwm_reg <= 0;
+        end
+        else begin
+            acc <= acc + code;
+            pwm_reg <= acc[CODE_WIDTH] ^ acc_prev[CODE_WIDTH];
+        end
+    end
+
+    assign pwm = pwm_reg;
 endmodule
