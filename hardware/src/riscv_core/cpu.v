@@ -7,6 +7,12 @@ module cpu #(
     input clk,
     input rst,
     input serial_in,
+    input [3:0] BUTTONS,
+    input [1:0] SWITCHES,
+    input empty,
+
+    output reg [5:0] LEDS,
+    output rd_en,
     output serial_out
 );
     localparam NOP = 32'h0000_0013;
@@ -39,7 +45,7 @@ module cpu #(
     // aluwb_sel = mux between wb_mux and alu_fwd
     // rs1_fwd_sel = mux between ra1 and aluwb_mux
     // rs2_fwd_sel = mux between ra2 and aluwb_mux
-    wire [31:0] alu_out, alu_fwd;
+    wire [31:0] alu_out;
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
@@ -159,20 +165,14 @@ module cpu #(
     wire [7:0] uart_rx_data_out;
     wire uart_rx_data_out_valid;
     wire uart_rx_data_out_ready;
-    assign uart_rx_data_out_ready = alu_out == 32'h80000004 && inst[1][6:0] == `OPC_LOAD;
     
     //// UART Transmitter
     wire [7:0] uart_tx_data_in;
     wire uart_tx_data_in_valid;
     wire uart_tx_data_in_ready;
-    assign uart_tx_data_in_valid = alu_out == 32'h80000008 && inst[1][6:0] == `OPC_STORE;
-    
-    assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0] : 0;
 
     wire [31:0] uart_dout;
-    assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
-                       alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
-                       32'd0;
+    
     uart #(
         .CLOCK_FREQ(CPU_CLOCK_FREQ),
         .BAUD_RATE(BAUD_RATE)
@@ -204,6 +204,7 @@ module cpu #(
         inst[1] <= NOP;
         inst[2] <= NOP;
         inst[3] <= NOP;
+        LEDS <= 6'd0;
         instruction_counter <= 0;
         cycle_counter <= 0;
       end
@@ -229,18 +230,6 @@ module cpu #(
           imm_gen_ex2mw <= imm_gen_id2ex;
 
           // Instruction and cycle counters
-        //   if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
-        //         instruction_counter <= 0;
-        //   end else if (inst[1] != NOP) begin
-        //         instruction_counter <= instruction_counter + 1;
-        //   end
-
-        //   if (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW) begin
-        //      cycle_counter <= 0;
-        //   end else begin
-        //      cycle_counter <= cycle_counter + 1;
-        //   end
-
           if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
             instruction_counter <= 0;
             cycle_counter <= 0;
@@ -251,6 +240,10 @@ module cpu #(
           else begin
             cycle_counter <= cycle_counter + 1;
             instruction_counter <= instruction_counter + 1;
+          end
+
+          if (alu_out == 32'h80000030 && inst[1][6:0] == `OPC_STORE) begin
+              LEDS <= rs2_exmux[5:0];
           end
           // CSR
           tohost_csr <= csr_we_mux;
@@ -324,7 +317,7 @@ module cpu #(
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
     assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken))) ? 1'b1 : 1'b0;
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
-    assign inst_mux = (nop_sel == 1'b0 || rst) ? bios_imem_mux : NOP;
+    assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
     //ID forwarding signals (used to handle instructions two cycles apart)
     assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
@@ -399,8 +392,21 @@ module cpu #(
     assign imem_ena = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) && (pc_id2ex[30] == 1'b1) && (alu_out[31:29] == 3'b001);
     assign imem_wea = mem_wen;
 
+    assign rd_en = (inst[1][6:0] == `OPC_LOAD && alu_out == 32'h80000024);
+
+
+
+    assign uart_rx_data_out_ready = alu_out == 32'h80000004 && inst[1][6:0] == `OPC_LOAD;
+    assign uart_tx_data_in_valid = alu_out == 32'h80000008 && inst[1][6:0] == `OPC_STORE;
+    assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0] : 0;
+    assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
+                       alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
+                       alu_ex2mw == 32'h80000020 ? {31'd0, empty} :
+                       alu_ex2mw == 32'h80000024 ? {29'd0, BUTTONS[2:0]} :
+                       alu_ex2mw == 32'h80000028 ? {30'd0, SWITCHES[1:0]} :
+                       32'd0;
+
     // MEM/WB stage signals/values/modules
-    assign alu_fwd = alu_ex2mw;
     //assign mem_mux = (mem_sel == 3'd1) ? dmem_dout : dmem_dout; // TODO: 0: bios doutb, 1: dmem_dout, 2: cycle_counter, 3: inst_counter, 4: uart_dout, 5: imem_doutb
     assign mem_sel = alu_ex2mw[31:28] == 4'b0100 ? 3'd0: 
                      (alu_ex2mw[31:30] == 2'b00 && alu_ex2mw[28] == 1'b1) ? 3'd1:
@@ -426,7 +432,7 @@ module cpu #(
     );
 
     // CSR
-    assign csr_mux = csr_sel ? imm_gen_id2ex : rs1_exmux;
+    assign csr_mux = (csr_sel != 3'd0) ? imm_gen_id2ex : rs1_exmux;
     assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
 
 endmodule
