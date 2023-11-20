@@ -31,6 +31,14 @@ module z1top #(
     // Buttons after the button_parser
     wire [3:0] buttons_pressed;
 
+    // FIFO inputs/outputs
+    wire [31:0] fifo_dout;
+    wire fifo_empty;
+    wire fifo_full;
+    wire fifo_rd_en;
+    wire fifo_wr_en;
+    wire [31:0] fifo_din;
+
     // Reset the CPU and all components on the cpu_clk if the reset button is
     // pushed or whenever the CPU clock PLL isn't locked
     wire cpu_reset;
@@ -91,8 +99,15 @@ module z1top #(
     ) cpu (
         .clk(cpu_clk),
         .rst(cpu_reset),
-        .serial_out(cpu_tx),
-        .serial_in(cpu_rx)
+        .serial_in(cpu_rx),
+        .BUTTONS(fifo_dout),
+        .SWITCHES(SWITCHES),
+        .empty(fifo_empty),
+        
+
+        .LEDS(LEDS),
+        .rd_en(fifo_rd_en),
+        .serial_out(cpu_tx)
     );
 
     cpu_to_synth_cdc #(
@@ -114,7 +129,10 @@ module z1top #(
         .synth_note_en(),
         .synth_synth_shift()
     );
-
+    wire [13:0] synth_sample;
+    wire [9:0] scaled_sample;
+    wire sample_valid;
+    wire sample_ready;
     synth #(
         .N_VOICES(N_VOICES)
     ) synth (
@@ -124,24 +142,42 @@ module z1top #(
         .mod_fcw(24'd0),
         .mod_shift(5'd0),
         .note_en(1'd0),
-        .sample(),
-        .sample_valid(),
-        .sample_ready(1'd0)
+        .sample(sample),
+        .sample_valid(sample_valid),
+        .sample_ready(sample_ready)
     );
 
     scaler scaler (
         .clk(pwm_clk),
         .synth_shift(5'd0),
-        .synth_out(14'd0),
-        .code()
+        .synth_out(sample),
+        .code(scaled_sample)
     );
 
     sampler sampler (
         .clk(pwm_clk),
         .rst(pwm_rst),
-        .synth_valid(1'd0),
-        .synth_ready(),
-        .scaled_synth_code(10'd0),
+        .synth_valid(sample_valid),
+        .synth_ready(sample_ready),
+        .scaled_synth_code(scaled_sample),
         .pwm_out(pwm_out)
+    );
+
+    assign fifo_wr_en = buttons_pressed != 4'd0;
+    assign fifo_din = {28'd0, buttons_pressed};
+
+    fifo #(
+        .WIDTH(32),
+        .DEPTH(8)
+    )
+    fifo (
+        .clk(cpu_clk),
+        .rst(rst),
+        .wr_en(fifo_wr_en), //INPUT (driven by z1top)
+        .din(fifo_din), //INPUT (driven by z1top)
+        .full(), // not used
+        .rd_en(fifo_rd_en), //INPUT (driven by CPU)
+        .dout(fifo_dout), // input INTO CPU
+        .empty(fifo_empty) // input INTO CPU
     );
 endmodule
