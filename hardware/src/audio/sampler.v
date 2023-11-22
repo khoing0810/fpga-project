@@ -21,7 +21,7 @@ module sampler (
         end  
     end
     
-    assign synth_ready = counter == 12'd2499;
+    assign synth_ready = counter >= 12'd2400; // or >= 12'd2400 based on what Sanjay asked Ansa about
     assign dac_code = synth_valid ? scaled_synth_code : 10'd0;
     sigma_delta_dac sigma_delta_dac_inst (
         .clk(clk),

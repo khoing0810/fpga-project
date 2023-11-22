@@ -91,6 +91,14 @@ module z1top #(
         .in(BUTTONS),
         .out(buttons_pressed)
     );
+    //// CPU MMIOs
+    wire [N_VOICES-1:0] [23:0] cpu_carrier_fcws;
+    wire [23:0] cpu_mod_fcw;
+    wire [4:0] cpu_mod_shift;
+    wire [N_VOICES-1:0] cpu_note_en;
+    wire cpu_req;
+    wire cpu_ack;
+    wire [4:0] cpu_synth_shift;
 
     cpu #(
         .CPU_CLOCK_FREQ(CPU_CLOCK_FREQ),
@@ -100,34 +108,44 @@ module z1top #(
         .clk(cpu_clk),
         .rst(cpu_reset),
         .serial_in(cpu_rx),
-        .BUTTONS(fifo_dout),
+        .BUTTONS(fifo_dout[3:0]),
         .SWITCHES(SWITCHES),
         .empty(fifo_empty),
+        .tx_ack(cpu_ack),
         
 
         .LEDS(LEDS),
         .rd_en(fifo_rd_en),
-        .serial_out(cpu_tx)
-    );
-
+        .serial_out(cpu_tx),
+        .car_fcw(cpu_carrier_fcws),
+        .mod_fcw(cpu_mod_fcw),
+        .mod_shift(cpu_mod_shift),
+        .note_en(cpu_note_en),
+        .tx_en(cpu_req)
+    );  
+    wire [N_VOICES-1:0] [23:0] synth_carrier_fcws;
+    wire [23:0] synth_mod_fcw;
+    wire [4:0] synth_mod_shift;
+    wire [N_VOICES-1:0] synth_note_en;
+    wire [4:0] synth_synth_shift;
     cpu_to_synth_cdc #(
         .N_VOICES(N_VOICES)
     ) cdc (
         .cpu_clk(cpu_clk),
         .synth_clk(pwm_clk),
-        .cpu_carrier_fcws(24'd0),
-        .cpu_mod_fcw(24'd0),
-        .cpu_mod_shift(5'd0),
-        .cpu_note_en(1'd0),
-        .cpu_synth_shift(5'd0),
-        .cpu_req(1'd0),
-        .cpu_ack(),
+        .cpu_carrier_fcws(cpu_carrier_fcws),
+        .cpu_mod_fcw(cpu_mod_fcw),
+        .cpu_mod_shift(cpu_mod_shift),
+        .cpu_note_en(cpu_note_en),
+        .cpu_synth_shift(cpu_synth_shift),
+        .cpu_req(cpu_req),
+        .cpu_ack(cpu_ack),
 
-        .synth_carrier_fcws(),
-        .synth_mod_fcw(),
-        .synth_mod_shift(),
-        .synth_note_en(),
-        .synth_synth_shift()
+        .synth_carrier_fcws(synth_carrier_fcws),
+        .synth_mod_fcw(synth_mod_fcw),
+        .synth_mod_shift(synth_mod_shift),
+        .synth_note_en(synth_note_en),
+        .synth_synth_shift(synth_synth_shift)
     );
     wire [13:0] synth_sample;
     wire [9:0] scaled_sample;
@@ -138,11 +156,11 @@ module z1top #(
     ) synth (
         .clk(pwm_clk),
         .rst(pwm_rst),
-        .carrier_fcws(24'd0),
-        .mod_fcw(24'd0),
-        .mod_shift(5'd0),
-        .note_en(1'd0),
-        .sample(sample),
+        .carrier_fcws(synth_carrier_fcws),
+        .mod_fcw(synth_mod_fcw),
+        .mod_shift(synth_mod_shift),
+        .note_en(synth_note_en),
+        .sample(synth_sample),
         .sample_valid(sample_valid),
         .sample_ready(sample_ready)
     );
@@ -150,7 +168,7 @@ module z1top #(
     scaler scaler (
         .clk(pwm_clk),
         .synth_shift(5'd0),
-        .synth_out(sample),
+        .synth_out(synth_sample),
         .code(scaled_sample)
     );
 
@@ -172,7 +190,7 @@ module z1top #(
     )
     fifo (
         .clk(cpu_clk),
-        .rst(rst),
+        .rst(cpu_reset),
         .wr_en(fifo_wr_en), //INPUT (driven by z1top)
         .din(fifo_din), //INPUT (driven by z1top)
         .full(), // not used

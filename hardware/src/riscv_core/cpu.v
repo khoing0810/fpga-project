@@ -10,8 +10,14 @@ module cpu #(
     input [3:0] BUTTONS,
     input [1:0] SWITCHES,
     input empty,
+    input tx_ack,
 
     output reg [5:0] LEDS,
+    output reg [23:0] car_fcw,
+    output reg [23:0] mod_fcw,
+    output reg [4:0] mod_shift,
+    output reg note_en,
+    output reg tx_en,
     output rd_en,
     output serial_out
 );
@@ -245,6 +251,21 @@ module cpu #(
           if (alu_out == 32'h80000030 && inst[1][6:0] == `OPC_STORE) begin
               LEDS <= rs2_exmux[5:0];
           end
+          if (alu_out == 32'h80000100 && inst[1][6:0] == `OPC_STORE) begin
+             car_fcw <= rs2_exmux[23:0];
+          end
+          if (alu_out == 32'h80000200 && inst[1][6:0] == `OPC_STORE) begin
+             mod_fcw <= rs2_exmux[23:0];
+          end
+          if (alu_out == 32'h80000204 && inst[1][6:0] == `OPC_STORE) begin
+             mod_shift <= rs2_exmux[4:0];
+          end
+          if (alu_out == 32'h80000208 && inst[1][6:0] == `OPC_STORE) begin
+             note_en <= rs2_exmux[0];
+          end
+          if (alu_out == 32'h80000210 && inst[1][6:0] == `OPC_STORE) begin
+             tx_en <= rs2_exmux[0];
+          end
           // CSR
           tohost_csr <= csr_we_mux;
       end
@@ -404,6 +425,7 @@ module cpu #(
                        alu_ex2mw == 32'h80000020 ? {31'd0, empty} :
                        alu_ex2mw == 32'h80000024 ? {29'd0, BUTTONS[2:0]} :
                        alu_ex2mw == 32'h80000028 ? {30'd0, SWITCHES[1:0]} :
+                       alu_ex2mw == 32'h80000214 ? {31'd0, tx_ack} :
                        32'd0;
 
     // MEM/WB stage signals/values/modules
