@@ -197,11 +197,6 @@ module cpu #(
         .data_in_ready(uart_tx_data_in_ready)
     );
 
-
-    // TODO: Your code to implement a fully functioning RISC-V core
-    // Add as many modules as you want
-    // Feel free to move the memory modules around
-
     // MAKE SURE regwen comes from the instruction used for mem/wb
 
     always @(posedge clk) begin
@@ -457,4 +452,89 @@ module cpu #(
     assign csr_mux = (csr_sel != 3'd0) ? imm_gen_id2ex : rs1_exmux;
     assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
 
+// ==================== ASSERTIONS ====================
+// PC RESET
+property PCReset;
+    @(posedge clk) (rst) |-> ##1 (pc == RESET_PC);
+endproperty
+PCReset_check: assume property(PCReset);
+
+// SW
+property swMask;
+    @(posedge clk) (inst_0[6:0] == `OPC_STORE && inst_0[14:12] == `FNC_SW) |-> ##1 (mem_wen == 4'b1111);
+endproperty
+swMask_check: assume property(swMask);
+
+// SH
+property shMask1;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0011);
+endproperty
+shMask1_check: assert property(shMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0011);
+
+property shMask2;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0110);
+endproperty
+shMask2_check: assert property(shMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0110);
+
+property shMask3;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b1100);
+endproperty
+shMask3_check: assert property(shMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1100);
+
+property shMask4;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b0000);
+endproperty
+shMask4_check: assert property(shMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0000);
+
+// SB
+property sbMask1;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0001);
+endproperty
+sbMask1_check: assert property(sbMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0001);
+
+property sbMask2;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0010);
+endproperty
+sbMask2_check: assert property(sbMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0010);
+
+property sbMask3;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b0100);
+endproperty
+sbMask3_check: assert property(sbMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0100);
+
+property sbMask4;
+    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b1000);
+endproperty
+sbMask4_check: assert property(sbMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1000);
+
+// LH & LHU
+property lh1;
+    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LH) |-> ##2 (mem_mux_wb[31:16] == 16'b0) || (mem_mux_wb[31:16] == 16'b1111111111111111);
+endproperty
+lh1_check: assert property(lh1) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0 or 1. Equal: %d", mem_mux_wb[31:16], mem_mux_wb[31:16] == 8'b0 || mem_mux_wb[31:16] == 8'b1);
+
+property lh2;
+    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LHU) |-> ##2 (mem_mux_wb[31:16] == 8'b0);
+endproperty
+lh2_check: assert property(lh2) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0", mem_mux_wb[31:16]);
+
+// LB & LBU
+property lb1;
+    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LB) |-> ##2 (mem_mux_wb[31:8] == 24'b0) || (mem_mux_wb[31:8] == {24{1'b1}});
+endproperty
+lb1_check: assume property(lb1);
+
+property lb2;
+    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LBU) |-> ##2 (mem_mux_wb[31:8] == 24'b0);
+endproperty
+lb2_check: assume property(lb2);
+
+// x0 REGISTER
+property zero;
+    @(posedge clk) (inst_0[6:0] == `OPC_JALR || inst_0[6:0] == `OPC_ARI_ITYPE ||
+                    inst_0[6:0] == `OPC_ARI_RTYPE || inst_0[6:0] == `OPC_JAL || 
+                    inst_0[6:0] == `OPC_STORE || inst_0[6:0] == `OPC_LOAD)
+    |-> (rf.mem[0] == 0);
+endproperty
+zero_check: assume property(zero);
 endmodule

@@ -11,7 +11,6 @@ module reg_file (
     reg [31:0] rd2_reg;
     integer i;
     initial begin
-        // TODO: double check these on lab computers!
         for (i = 0; i < DEPTH; i = i + 1) begin
             mem[i] = 0;
         end
