@@ -27,15 +27,15 @@ module cpu #(
     wire [31:0] bios_douta, bios_doutb;
     wire bios_ena, bios_enb;
 
-    // MUXs (could remove aluwb_mux and just use wb_mux)
+    // MUXs
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
-    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
+    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, mem_mux_wb; 
     wire [31:0] rs1_exmux, rs2_exmux, inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
-    // rs1_exmux = mux between rs1_id2ex and aluwb_mux
-    // rs2_exmux = mux between rs2_id2ex and aluwb_mux
+    // rs1_exmux = mux between rs1_id2ex and wb_mux
+    // rs2_exmux = mux between rs2_id2ex and wb_mux
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
-    // rs1_mux = mux between ra1 and aluwb_mux
-    // rs2_mux = mux between ra2 and aluwb_mux
+    // rs1_mux = mux between ra1 and wb_mux
+    // rs2_mux = mux between ra2 and wb_mux
     wire [31:0] csr_mux, csr_we_mux;
 
     wire [31:0] inst_0, inst_1, inst_2, inst_3;
@@ -46,18 +46,17 @@ module cpu #(
     wire [2:0] pc_sel, mem_sel;
     wire nop_sel;
     wire rs1ex_sel, rs2ex_sel, aluwb_sel, rs1_fwd_sel, rs2_fwd_sel; // will be a mux between the actual A/B mux and the forwarding mux
-    // rs1ex_sel = mux between rs1_id2ex and aluwb_mux
-    // rs2ex_sel = mux between rs2_id2ex and aluwb_mux
+    // rs1ex_sel = mux between rs1_id2ex and wb_mux
+    // rs2ex_sel = mux between rs2_id2ex and wb_mux
     // aluwb_sel = mux between wb_mux and alu_fwd
-    // rs1_fwd_sel = mux between ra1 and aluwb_mux
-    // rs2_fwd_sel = mux between ra2 and aluwb_mux
+    // rs1_fwd_sel = mux between ra1 and wb_mux
+    // rs2_fwd_sel = mux between ra2 and wb_mux
     wire [31:0] alu_out;
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
     reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
-    reg [31:0] rs1_id2ex_nomux; // rs1 (non-muxed) value from the ID stage
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
     reg [31:0] imm_gen_id2ex; // immediate from the ID stage
@@ -220,7 +219,7 @@ module cpu #(
           pc_ex2mw <= pc_id2ex;
           
           // ID to EX
-          rs1_id2ex_nomux <= rd1;
+          //rs1_id2ex_nomux <= rd1;
           rs1_id2ex <= rs1_mux;
           rs2_id2ex <= rs2_mux;
           imm_gen_id2ex <= imm;
@@ -331,7 +330,7 @@ module cpu #(
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
-    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken))) ? 1'b1 : 1'b0;
+    assign nop_sel = inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken);
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
@@ -343,10 +342,8 @@ module cpu #(
     assign ra1 = inst_mux[19:15];
     assign ra2 = inst_mux[24:20];
     
-
-    assign aluwb_mux = wb_mux;
-    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : aluwb_mux;
-    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : aluwb_mux;
+    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : wb_mux;
+    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : wb_mux;
 
     imm_gen imm_gen (
         .inst(inst_mux),
@@ -364,8 +361,8 @@ module cpu #(
     assign rs2ex_sel = inst[1][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign aluwb_sel = 0; /* (wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
 
-    assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
-    assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : aluwb_mux;
+    assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : wb_mux;
+    assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : wb_mux;
 
     alu alu (
         .a_val(a_mux),
