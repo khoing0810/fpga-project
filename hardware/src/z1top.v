@@ -1,11 +1,11 @@
 module z1top #(
     parameter BAUD_RATE = 115_200,
     // Warning: CPU_CLOCK_FREQ must match the PLL parameters!
-    parameter CPU_CLOCK_FREQ = 50_000_000,
+    parameter CPU_CLOCK_FREQ = 60_000_000,
     // PLL Parameters: sets the CPU clock = 125Mhz * 34 / 5 / 17 = 50 MHz
-    parameter CPU_CLK_CLKFBOUT_MULT = 34,
+    parameter CPU_CLK_CLKFBOUT_MULT = 36,
     parameter CPU_CLK_DIVCLK_DIVIDE = 5,
-    parameter CPU_CLK_CLKOUT_DIVIDE  = 17,
+    parameter CPU_CLK_CLKOUT_DIVIDE  = 15,
     /* verilator lint_off REALCVT */
     // Sample the button signal every 500us
     parameter integer B_SAMPLE_CNT_MAX = 0.0005 * CPU_CLOCK_FREQ,
@@ -58,7 +58,7 @@ module z1top #(
     // Use IOBs to drive the PWM output
     (* IOB = "true" *) reg pwm_iob;
     wire pwm_out; // TODO: connect this wire to your DAC
-    //assign pwm_out = 1'b0;
+    assign pwm_out = 1'b0;
     assign AUD_PWM = pwm_iob;
     assign AUD_SD = 1'b1;
     always @(posedge pwm_clk) begin
@@ -178,7 +178,7 @@ module z1top #(
         .synth_valid(sample_valid),
         .synth_ready(sample_ready),
         .scaled_synth_code(scaled_sample),
-        .pwm_out(pwm_out)
+        .pwm_out()
     );
 
     assign fifo_wr_en = buttons_pressed != 4'd0;
