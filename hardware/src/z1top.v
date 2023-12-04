@@ -107,22 +107,9 @@ module z1top #(
     ) cpu (
         .clk(cpu_clk),
         .rst(cpu_reset),
-        .serial_in(cpu_rx),
-        .BUTTONS(fifo_dout[3:0]),
-        .SWITCHES(SWITCHES),
-        .empty(fifo_empty),
-        .tx_ack(cpu_ack),
-        
-
-        .LEDS(LEDS),
-        .rd_en(fifo_rd_en),
         .serial_out(cpu_tx),
-        .car_fcw(cpu_carrier_fcws),
-        .mod_fcw(cpu_mod_fcw),
-        .mod_shift(cpu_mod_shift),
-        .note_en(cpu_note_en),
-        .tx_en(cpu_req)
-    );  
+        .serial_in(cpu_rx)
+    );
     wire [N_VOICES-1:0] [23:0] synth_carrier_fcws;
     wire [23:0] synth_mod_fcw;
     wire [4:0] synth_mod_shift;

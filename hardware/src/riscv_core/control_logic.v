@@ -98,7 +98,7 @@ always @(*) begin
         `OPC_BRANCH: begin // branch
             reg_wen = 0;
             imm_sel = 3'b010;
-            br_un = (funct3 == 3'b110 || funct3 == 3'b111) ? 1 : 0;
+            br_un = funct3 == 3'b110 || funct3 == 3'b111;
             a_sel = 1;
             b_sel = 1;
             alu_sel = `ALU_ADD;

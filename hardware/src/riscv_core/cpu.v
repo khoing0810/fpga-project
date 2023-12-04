@@ -7,18 +7,6 @@ module cpu #(
     input clk,
     input rst,
     input serial_in,
-    input [3:0] BUTTONS,
-    input [1:0] SWITCHES,
-    input empty,
-    input tx_ack,
-
-    output reg [5:0] LEDS,
-    output reg [23:0] car_fcw,
-    output reg [23:0] mod_fcw,
-    output reg [4:0] mod_shift,
-    output reg note_en,
-    output reg tx_en,
-    output rd_en,
     output serial_out
 );
     localparam NOP = 32'h0000_0013;
@@ -45,7 +33,7 @@ module cpu #(
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
-    reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
+    reg [31:0] inst [2:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
     // reg [31:0] inst0, inst1, inst2, inst3;
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
     reg [31:0] rs1_id2ex_nomux; // rs1 (non-muxed) value from the ID stage
@@ -94,7 +82,6 @@ module cpu #(
         inst[0] = NOP;
         inst[1] = NOP;
         inst[2] = NOP;
-        // inst3 = NOP;
     end
     
     bios_mem bios_mem (
@@ -189,21 +176,18 @@ module cpu #(
     );
 
     // MAKE SURE regwen comes from the instruction used for mem/wb
-
+    reg [31:0] inst_counter_op1, cycle_counter_op1, inst_counter_op2, cycle_counter_op2;
     always @(posedge clk) begin
       if (rst) begin
         pc <= RESET_PC;
         inst[1] <= NOP;
         inst[2] <= NOP;
-        // inst3 <= NOP;
-        LEDS <= 6'd0;
         instruction_counter <= 0;
         cycle_counter <= 0;
       end
       else begin
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
           inst[2] <= inst[1]; // move the instruction from the ID stage to the EX stage
-        //   inst3 <= inst[2]; // move the instruction from the EX stage to the MEM stage
 
           // PC
           pc <= pc_mux;
@@ -233,9 +217,27 @@ module cpu #(
             cycle_counter <= cycle_counter + 1;
             instruction_counter <= instruction_counter + 1;
           end
+        // if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
+        //     cycle_counter_op1 <= 0;
+        //     inst_counter_op1 <= 0;
+        //     inst_counter_op2 <= 0;
+        //     cycle_counter_op2 <= 0;
+        // end else if (inst[1] == NOP) begin
+        //     inst_counter_op1 <= instruction_counter;
+        //     cycle_counter_op1 <= cycle_counter;
+        //     inst_counter_op2 <= 0;
+        //     cycle_counter_op2 <= 1;
+        // end else begin
+        //     inst_counter_op1 <= instruction_counter;
+        //     cycle_counter_op1 <= cycle_counter;
+        //     inst_counter_op2 <= 1;
+        //     cycle_counter_op2 <= 1;
+        // end
 
-          // CSR
-          tohost_csr <= csr_we_mux;
+        // cycle_counter <= cycle_counter_op1 + cycle_counter_op2;
+        // instruction_counter <= inst_counter_op1 + inst_counter_op2;
+        // CSR
+        tohost_csr <= csr_we_mux;
       end
     end
     wire reg_wenEX;
@@ -285,14 +287,24 @@ module cpu #(
     );
 
     // IF/ID stage signals/values/modules 
+    reg [31:0] a, b; // this is for pc_mux
     always @(*) begin // Used because of combinational logic
-        pc_mux = rst ? RESET_PC: 
-                    (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
-                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
-                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
-                    (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
-                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
+        a = rst ? RESET_PC: 
+                    (pc_sel == 3'd0 || pc_sel == 3'd2 || pc_sel == 3'd3) ? pc:
+                    (pc_sel == 3'd1) ? alu_out:
+                    (pc_sel == 3'd4) ? pc_id2ex: 
                     RESET_PC;
+        b = (rst || pc_sel == 3'd1 || pc_sel == 3'd3) ? 0 :
+            (pc_sel == 3'd0 || pc_sel == 3'd4) ? 4 :
+            (pc_sel == 3'd2) ? imm : RESET_PC;
+        pc_mux = a + b;
+        // pc_mux = rst ? RESET_PC: 
+        //             (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
+        //             (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
+        //             (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
+        //             (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
+        //             (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
+                    // RESET_PC;
         inst[0] = inst_mux;
     end
     wire hazard1, hazard2, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
@@ -374,10 +386,6 @@ module cpu #(
     assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_id2ex[7:0] : 0;
     assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
                        alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
-                       alu_ex2mw == 32'h80000020 ? {31'd0, empty} :
-                       alu_ex2mw == 32'h80000024 ? {29'd0, BUTTONS[2:0]} :
-                       alu_ex2mw == 32'h80000028 ? {30'd0, SWITCHES[1:0]} :
-                       alu_ex2mw == 32'h80000214 ? {31'd0, tx_ack} :
                        32'd0;
 
     // MEM/WB stage signals/values/modules
