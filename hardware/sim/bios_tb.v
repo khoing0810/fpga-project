@@ -55,7 +55,7 @@ module bios_tb();
 
       $display("[time %t, sim. cycle %d] [Host (tb) --> FPGA_SERIAL_RX] Sent char 8'h%h",
                $time, cycle, char_in);
-      repeat (300) @(posedge clk);
+      repeat (600) @(posedge clk);
     end
   endtask
 

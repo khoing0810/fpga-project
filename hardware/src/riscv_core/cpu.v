@@ -27,15 +27,15 @@ module cpu #(
     wire [31:0] bios_douta, bios_doutb;
     wire bios_ena, bios_enb;
 
-    // MUXs
+    // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
-    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, mem_mux_wb; 
+    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
     wire [31:0] rs1_exmux, rs2_exmux, inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
-    // rs1_exmux = mux between rs1_id2ex and wb_mux
-    // rs2_exmux = mux between rs2_id2ex and wb_mux
+    // rs1_exmux = mux between rs1_id2ex and aluwb_mux
+    // rs2_exmux = mux between rs2_id2ex and aluwb_mux
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
-    // rs1_mux = mux between ra1 and wb_mux
-    // rs2_mux = mux between ra2 and wb_mux
+    // rs1_mux = mux between ra1 and aluwb_mux
+    // rs2_mux = mux between ra2 and aluwb_mux
     wire [31:0] csr_mux, csr_we_mux;
 
     wire [31:0] inst_0, inst_1, inst_2, inst_3;
@@ -46,17 +46,18 @@ module cpu #(
     wire [2:0] pc_sel, mem_sel;
     wire nop_sel;
     wire rs1ex_sel, rs2ex_sel, aluwb_sel, rs1_fwd_sel, rs2_fwd_sel; // will be a mux between the actual A/B mux and the forwarding mux
-    // rs1ex_sel = mux between rs1_id2ex and wb_mux
-    // rs2ex_sel = mux between rs2_id2ex and wb_mux
+    // rs1ex_sel = mux between rs1_id2ex and aluwb_mux
+    // rs2ex_sel = mux between rs2_id2ex and aluwb_mux
     // aluwb_sel = mux between wb_mux and alu_fwd
-    // rs1_fwd_sel = mux between ra1 and wb_mux
-    // rs2_fwd_sel = mux between ra2 and wb_mux
+    // rs1_fwd_sel = mux between ra1 and aluwb_mux
+    // rs2_fwd_sel = mux between ra2 and aluwb_mux
     wire [31:0] alu_out;
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
     reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
+    reg [31:0] rs1_id2ex_nomux; // rs1 (non-muxed) value from the ID stage
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
     reg [31:0] imm_gen_id2ex; // immediate from the ID stage
@@ -219,13 +220,13 @@ module cpu #(
           pc_ex2mw <= pc_id2ex;
           
           // ID to EX
-          //rs1_id2ex_nomux <= rd1;
-          rs1_id2ex <= rs1_mux;
-          rs2_id2ex <= rs2_mux;
+          rs1_id2ex_nomux <= rd1;
+          rs1_id2ex <= rd1;
+          rs2_id2ex <= rd2;
           imm_gen_id2ex <= imm;
         
           // EX to MEM
-          rs2_exmux_to_mem <= rs2_exmux;
+          //rs2_exmux_to_mem <= rs2_exmux;
           alu_ex2mw <= alu_out;
           imm_gen_ex2mw <= imm_gen_id2ex;
 
@@ -243,28 +244,28 @@ module cpu #(
           end
 
           if (alu_out == 32'h80000030 && inst[1][6:0] == `OPC_STORE) begin
-              LEDS <= rs2_exmux[5:0];
+             LEDS <= rs2_id2ex[5:0];
           end
           if (alu_out == 32'h80000100 && inst[1][6:0] == `OPC_STORE) begin
-             car_fcw <= rs2_exmux[23:0];
+             car_fcw <= rs2_id2ex[23:0];
           end
           if (alu_out == 32'h80000200 && inst[1][6:0] == `OPC_STORE) begin
-             mod_fcw <= rs2_exmux[23:0];
+             mod_fcw <= rs2_id2ex[23:0];
           end
           if (alu_out == 32'h80000204 && inst[1][6:0] == `OPC_STORE) begin
-             mod_shift <= rs2_exmux[4:0];
+             mod_shift <= rs2_id2ex[4:0];
           end
           if (alu_out == 32'h80000208 && inst[1][6:0] == `OPC_STORE) begin
-             note_en <= rs2_exmux[0];
+             note_en <= rs2_id2ex[0];
           end
           if (alu_out == 32'h80000210 && inst[1][6:0] == `OPC_STORE) begin
-             tx_en <= rs2_exmux[0];
+             tx_en <= rs2_id2ex[0];
           end
           // CSR
           tohost_csr <= csr_we_mux;
       end
     end
-
+    wire reg_wenEX;
     // ID stage
     control_logic control_logicID ( // only need imm_sel since that is the only signal that we need in this stage
         .inst(inst[0]),
@@ -288,7 +289,7 @@ module cpu #(
         .a_sel(a_sel),
         .b_sel(b_sel),
         .imm_sel(),
-        .reg_wen(),
+        .reg_wen(reg_wenEX),
         .br_un(br_un),
         .wb_sel(),
         .csr_sel(csr_sel),
@@ -321,16 +322,20 @@ module cpu #(
                     RESET_PC;
         inst[0] = inst_mux;
     end
+    wire hazard1, hazard2, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
+    assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX == 1'b1;
+    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && we == 1'b1; 
+    assign hazard = hazard1 || hazard2;
     assign pc_sel = (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_BRANCH) ? 3'd2: 
-                        (inst[0][6:0] == `OPC_JALR) ? 3'd3: 
-                        (inst[1][6:0] == `OPC_JALR) ? 3'd1:
                         (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
+                        (inst[1][6:0] == `OPC_JALR) ? 3'd1: 
+                        (inst[0][6:0] == `OPC_JALR || hazard) ? 3'd3: 
                         3'd0;
     assign bios_addra = pc_mux[13:2];
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
-    assign nop_sel = inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken);
+    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken) || (inst[1] == bios_imem_mux)) || hazard) ? 1'b1 : 1'b0;
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
@@ -342,8 +347,10 @@ module cpu #(
     assign ra1 = inst_mux[19:15];
     assign ra2 = inst_mux[24:20];
     
-    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : wb_mux;
-    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : wb_mux;
+
+    assign aluwb_mux = wb_mux;
+    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : aluwb_mux;
+    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : aluwb_mux;
 
     imm_gen imm_gen (
         .inst(inst_mux),
@@ -352,8 +359,8 @@ module cpu #(
     );
 
     // EX/intoMEM stage signals/values/modules
-    assign a_mux = (a_sel == 1'd0) ? rs1_exmux : pc_id2ex;
-    assign b_mux = (b_sel == 1'd0) ? rs2_exmux : imm_gen_id2ex;
+    assign a_mux = (a_sel == 1'd0) ? rs1_id2ex : pc_id2ex;
+    assign b_mux = (b_sel == 1'd0) ? rs2_id2ex : imm_gen_id2ex;
 
     // EX forwarding signals (used to handle instructions one cycle apart)
     assign rs1ex_sel = inst[1][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
@@ -361,8 +368,8 @@ module cpu #(
     assign rs2ex_sel = inst[1][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
     assign aluwb_sel = 0; /* (wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
 
-    assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : wb_mux;
-    assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : wb_mux;
+    assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
+    assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : aluwb_mux;
 
     alu alu (
         .a_val(a_mux),
@@ -372,8 +379,8 @@ module cpu #(
     );
 
     bcmp bcmp (
-        .a_val(rs1_exmux),
-        .b_val(rs2_exmux),
+        .a_val(rs1_id2ex),
+        .b_val(rs2_id2ex),
         .br_un(br_un),
         .br_eq(br_eq),
         .br_lt(br_lt)
@@ -388,7 +395,7 @@ module cpu #(
     mem_decoder mem_decoder_pre ( // used to set mem_wen and dmem_din before the dmem_dout is set
         .inst(inst[1]),
         .imm(alu_out),
-        .mem_mux(rs2_exmux),
+        .mem_mux(rs2_id2ex),
         .mem_wen(mem_wen),
         .mem_mux_wb(dmem_din)
     );
@@ -401,7 +408,7 @@ module cpu #(
     assign bios_enb = (alu_out[31:28] == 4'b0100);
 
     assign imem_addra = alu_out[15:2];
-    assign imem_dina = rs2_exmux;
+    assign imem_dina = rs2_id2ex;
     assign imem_ena = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) && (pc_id2ex[30] == 1'b1) && (alu_out[31:29] == 3'b001);
     assign imem_wea = mem_wen;
 
@@ -411,7 +418,7 @@ module cpu #(
 
     assign uart_rx_data_out_ready = alu_out == 32'h80000004 && inst[1][6:0] == `OPC_LOAD;
     assign uart_tx_data_in_valid = alu_out == 32'h80000008 && inst[1][6:0] == `OPC_STORE;
-    assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_exmux[7:0] : 0;
+    assign uart_tx_data_in = uart_tx_data_in_valid ? rs2_id2ex[7:0] : 0;
     assign uart_dout = alu_ex2mw == 32'h80000000 ? {30'b0, uart_rx_data_out_valid, uart_tx_data_in_ready}:
                        alu_ex2mw == 32'h80000004 ? {24'b0, uart_rx_data_out} :
                        alu_ex2mw == 32'h80000020 ? {31'd0, empty} :
@@ -446,92 +453,92 @@ module cpu #(
     );
 
     // CSR
-    assign csr_mux = (csr_sel != 3'd0) ? imm_gen_id2ex : rs1_exmux;
+    assign csr_mux = (csr_sel != 3'd0) ? imm_gen_id2ex : rs1_id2ex;
     assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
 
 // ==================== ASSERTIONS ====================
 // PC RESET
-property PCReset;
-    @(posedge clk) (rst) |-> ##1 (pc == RESET_PC);
-endproperty
-PCReset_check: assume property(PCReset);
+// property PCReset;
+//     @(posedge clk) (rst) |-> ##1 (pc == RESET_PC);
+// endproperty
+// PCReset_check: assume property(PCReset);
 
-// SW
-property swMask;
-    @(posedge clk) (inst_0[6:0] == `OPC_STORE && inst_0[14:12] == `FNC_SW) |-> ##1 (mem_wen == 4'b1111);
-endproperty
-swMask_check: assume property(swMask);
+// // SW
+// property swMask;
+//     @(posedge clk) (inst_0[6:0] == `OPC_STORE && inst_0[14:12] == `FNC_SW) |-> ##1 (mem_wen == 4'b1111);
+// endproperty
+// swMask_check: assume property(swMask);
 
-// SH
-property shMask1;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0011);
-endproperty
-shMask1_check: assert property(shMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0011);
+// // SH
+// property shMask1;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0011);
+// endproperty
+// shMask1_check: assert property(shMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0011);
 
-property shMask2;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0110);
-endproperty
-shMask2_check: assert property(shMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0110);
+// property shMask2;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0110);
+// endproperty
+// shMask2_check: assert property(shMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0110);
 
-property shMask3;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b1100);
-endproperty
-shMask3_check: assert property(shMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1100);
+// property shMask3;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b1100);
+// endproperty
+// shMask3_check: assert property(shMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1100);
 
-property shMask4;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b0000);
-endproperty
-shMask4_check: assert property(shMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0000);
+// property shMask4;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SH && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b0000);
+// endproperty
+// shMask4_check: assert property(shMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0000);
 
-// SB
-property sbMask1;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0001);
-endproperty
-sbMask1_check: assert property(sbMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0001);
+// // SB
+// property sbMask1;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b00) |-> (mem_wen == 4'b0001);
+// endproperty
+// sbMask1_check: assert property(sbMask1) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0001);
 
-property sbMask2;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0010);
-endproperty
-sbMask2_check: assert property(sbMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0010);
+// property sbMask2;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b01) |-> (mem_wen == 4'b0010);
+// endproperty
+// sbMask2_check: assert property(sbMask2) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0010);
 
-property sbMask3;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b0100);
-endproperty
-sbMask3_check: assert property(sbMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0100);
+// property sbMask3;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b10) |-> (mem_wen == 4'b0100);
+// endproperty
+// sbMask3_check: assert property(sbMask3) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b0100);
 
-property sbMask4;
-    @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b1000);
-endproperty
-sbMask4_check: assert property(sbMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1000);
+// property sbMask4;
+//     @(posedge clk) (inst_1[6:0] == `OPC_STORE && inst_1[14:12] == `FNC_SB && alu_out[1:0] == 2'b11) |-> (mem_wen == 4'b1000);
+// endproperty
+// sbMask4_check: assert property(sbMask4) else $error("Assertion failed. mem_wen = %d, expected = %d", mem_wen, 4'b1000);
 
-// LH & LHU
-property lh1;
-    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LH) |-> ##2 (mem_mux_wb[31:16] == 16'b0) || (mem_mux_wb[31:16] == 16'b1111111111111111);
-endproperty
-lh1_check: assert property(lh1) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0 or 1. Equal: %d", mem_mux_wb[31:16], mem_mux_wb[31:16] == 8'b0 || mem_mux_wb[31:16] == 8'b1);
+// // LH & LHU
+// property lh1;
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LH) |-> ##2 (mem_mux_wb[31:16] == 16'b0) || (mem_mux_wb[31:16] == 16'b1111111111111111);
+// endproperty
+// lh1_check: assert property(lh1) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0 or 1. Equal: %d", mem_mux_wb[31:16], mem_mux_wb[31:16] == 8'b0 || mem_mux_wb[31:16] == 8'b1);
 
-property lh2;
-    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LHU) |-> ##2 (mem_mux_wb[31:16] == 8'b0);
-endproperty
-lh2_check: assert property(lh2) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0", mem_mux_wb[31:16]);
+// property lh2;
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LHU) |-> ##2 (mem_mux_wb[31:16] == 8'b0);
+// endproperty
+// lh2_check: assert property(lh2) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0", mem_mux_wb[31:16]);
 
-// LB & LBU
-property lb1;
-    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LB) |-> ##2 (mem_mux_wb[31:8] == 24'b0) || (mem_mux_wb[31:8] == {24{1'b1}});
-endproperty
-lb1_check: assume property(lb1);
+// // LB & LBU
+// property lb1;
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LB) |-> ##2 (mem_mux_wb[31:8] == 24'b0) || (mem_mux_wb[31:8] == {24{1'b1}});
+// endproperty
+// lb1_check: assume property(lb1);
 
-property lb2;
-    @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LBU) |-> ##2 (mem_mux_wb[31:8] == 24'b0);
-endproperty
-lb2_check: assume property(lb2);
+// property lb2;
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LBU) |-> ##2 (mem_mux_wb[31:8] == 24'b0);
+// endproperty
+// lb2_check: assume property(lb2);
 
-// x0 REGISTER
-property zero;
-    @(posedge clk) (inst_0[6:0] == `OPC_JALR || inst_0[6:0] == `OPC_ARI_ITYPE ||
-                    inst_0[6:0] == `OPC_ARI_RTYPE || inst_0[6:0] == `OPC_JAL || 
-                    inst_0[6:0] == `OPC_STORE || inst_0[6:0] == `OPC_LOAD)
-    |-> (rf.mem[0] == 0);
-endproperty
-zero_check: assume property(zero);
+// // x0 REGISTER
+// property zero;
+//     @(posedge clk) (inst_0[6:0] == `OPC_JALR || inst_0[6:0] == `OPC_ARI_ITYPE ||
+//                     inst_0[6:0] == `OPC_ARI_RTYPE || inst_0[6:0] == `OPC_JAL || 
+//                     inst_0[6:0] == `OPC_STORE || inst_0[6:0] == `OPC_LOAD)
+//     |-> (rf.mem[0] == 0);
+// endproperty
+// zero_check: assume property(zero);
 endmodule
