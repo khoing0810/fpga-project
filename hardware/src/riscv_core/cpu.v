@@ -30,32 +30,23 @@ module cpu #(
     // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
     wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
-    wire [31:0] rs1_exmux, rs2_exmux, inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
-    // rs1_exmux = mux between rs1_id2ex and aluwb_mux
-    // rs2_exmux = mux between rs2_id2ex and aluwb_mux
+    wire [31:0] inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
     // rs1_mux = mux between ra1 and aluwb_mux
     // rs2_mux = mux between ra2 and aluwb_mux
     wire [31:0] csr_mux, csr_we_mux;
-
-    wire [31:0] inst_0, inst_1, inst_2, inst_3;
 
 
 
     // Signals/values determined in CPU
     wire [2:0] pc_sel, mem_sel;
     wire nop_sel;
-    wire rs1ex_sel, rs2ex_sel, aluwb_sel, rs1_fwd_sel, rs2_fwd_sel; // will be a mux between the actual A/B mux and the forwarding mux
-    // rs1ex_sel = mux between rs1_id2ex and aluwb_mux
-    // rs2ex_sel = mux between rs2_id2ex and aluwb_mux
-    // aluwb_sel = mux between wb_mux and alu_fwd
-    // rs1_fwd_sel = mux between ra1 and aluwb_mux
-    // rs2_fwd_sel = mux between ra2 and aluwb_mux
     wire [31:0] alu_out;
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
     reg [31:0] inst [3:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
+    // reg [31:0] inst0, inst1, inst2, inst3;
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
     reg [31:0] rs1_id2ex_nomux; // rs1 (non-muxed) value from the ID stage
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
@@ -76,11 +67,11 @@ module cpu #(
     reg [31:0] instruction_counter = 0; // number of cycles executed
     reg [31:0] tohost_csr = 0; // tohost CSR
 
-    //DEBUGGING
-    assign inst_0 = inst[0];
-    assign inst_1 = inst[1];
-    assign inst_2 = inst[2];
-    assign inst_3 = inst[3];
+    // //DEBUGGING
+    // assign inst_0 = inst[0];
+    // assign inst_1 = inst[1];
+    // assign inst_2 = inst[2];
+    // assign inst_3 = inst[3];
 
    
 
@@ -103,7 +94,7 @@ module cpu #(
         inst[0] = NOP;
         inst[1] = NOP;
         inst[2] = NOP;
-        inst[3] = NOP;
+        // inst3 = NOP;
     end
     
     bios_mem bios_mem (
@@ -204,7 +195,7 @@ module cpu #(
         pc <= RESET_PC;
         inst[1] <= NOP;
         inst[2] <= NOP;
-        inst[3] <= NOP;
+        // inst3 <= NOP;
         LEDS <= 6'd0;
         instruction_counter <= 0;
         cycle_counter <= 0;
@@ -212,7 +203,7 @@ module cpu #(
       else begin
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
           inst[2] <= inst[1]; // move the instruction from the ID stage to the EX stage
-          inst[3] <= inst[2]; // move the instruction from the EX stage to the MEM stage
+        //   inst3 <= inst[2]; // move the instruction from the EX stage to the MEM stage
 
           // PC
           pc <= pc_mux;
@@ -243,24 +234,6 @@ module cpu #(
             instruction_counter <= instruction_counter + 1;
           end
 
-          if (alu_out == 32'h80000030 && inst[1][6:0] == `OPC_STORE) begin
-             LEDS <= rs2_id2ex[5:0];
-          end
-          if (alu_out == 32'h80000100 && inst[1][6:0] == `OPC_STORE) begin
-             car_fcw <= rs2_id2ex[23:0];
-          end
-          if (alu_out == 32'h80000200 && inst[1][6:0] == `OPC_STORE) begin
-             mod_fcw <= rs2_id2ex[23:0];
-          end
-          if (alu_out == 32'h80000204 && inst[1][6:0] == `OPC_STORE) begin
-             mod_shift <= rs2_id2ex[4:0];
-          end
-          if (alu_out == 32'h80000208 && inst[1][6:0] == `OPC_STORE) begin
-             note_en <= rs2_id2ex[0];
-          end
-          if (alu_out == 32'h80000210 && inst[1][6:0] == `OPC_STORE) begin
-             tx_en <= rs2_id2ex[0];
-          end
           // CSR
           tohost_csr <= csr_we_mux;
       end
@@ -326,31 +299,22 @@ module cpu #(
     assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX == 1'b1;
     assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && we == 1'b1; 
     assign hazard = hazard1 || hazard2;
-    assign pc_sel = (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_BRANCH) ? 3'd2: 
-                        (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4:
-                        (inst[1][6:0] == `OPC_JALR) ? 3'd1: 
-                        (inst[0][6:0] == `OPC_JALR || hazard) ? 3'd3: 
-                        3'd0;
+    assign pc_sel = (inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_JAL || (inst[1][6:0] == `OPC_BRANCH && taken) ) ? 3'd1: 
+                    (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || hazard) ? 3'd3: 
+                    3'd0;
     assign bios_addra = pc_mux[13:2];
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
-    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && !taken) || (inst[1] == bios_imem_mux)) || hazard) ? 1'b1 : 1'b0;
+    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && taken) || (inst[1] == bios_imem_mux)) || hazard);
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
     //ID forwarding signals (used to handle instructions two cycles apart)
-    assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
-    /*(rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign rs2_fwd_sel = inst[0][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
-    /*(rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
+    assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0;
+    assign rs2_fwd_sel = inst[0][24:20] == wa && we == 1 && wa != 5'd0;
     assign ra1 = inst_mux[19:15];
     assign ra2 = inst_mux[24:20];
-    
-
-    assign aluwb_mux = wb_mux;
-    assign rs1_mux = (rs1_fwd_sel == 1'd0) ? rd1 : aluwb_mux;
-    assign rs2_mux = (rs2_fwd_sel == 1'd0) ? rd2 : aluwb_mux;
 
     imm_gen imm_gen (
         .inst(inst_mux),
@@ -361,15 +325,6 @@ module cpu #(
     // EX/intoMEM stage signals/values/modules
     assign a_mux = (a_sel == 1'd0) ? rs1_id2ex : pc_id2ex;
     assign b_mux = (b_sel == 1'd0) ? rs2_id2ex : imm_gen_id2ex;
-
-    // EX forwarding signals (used to handle instructions one cycle apart)
-    assign rs1ex_sel = inst[1][19:15] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0;
-    /* (rs1_id2ex == 0) ? 1'd0 : (rs1_id2ex == wa) ? 1'd1 : (rs1_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign rs2ex_sel = inst[1][24:20] == wa && we == 1 && wa != 5'd0 ? 1'd1 : 1'd0; /* (rs2_id2ex == 0) ? 1'd0 : (rs2_id2ex == wa) ? 1'd1 : (rs2_id2ex == wa) ? 1'd2 : 1'd0;*/
-    assign aluwb_sel = 0; /* (wb_sel == 2'd0) ? 1'd0 : (wb_sel == 2'd1) ? 1'd1 : 1'd0;*/
-
-    assign rs1_exmux = (rs1ex_sel == 1'd0) ? rs1_id2ex : aluwb_mux;
-    assign rs2_exmux = (rs2ex_sel == 1'd0) ? rs2_id2ex : aluwb_mux;
 
     alu alu (
         .a_val(a_mux),
@@ -411,8 +366,6 @@ module cpu #(
     assign imem_dina = rs2_id2ex;
     assign imem_ena = (inst[1][6:0] == `OPC_STORE || inst[1][6:0] == `OPC_LOAD) && (pc_id2ex[30] == 1'b1) && (alu_out[31:29] == 3'b001);
     assign imem_wea = mem_wen;
-
-    assign rd_en = (inst[1][6:0] == `OPC_LOAD && alu_out == 32'h80000024);
 
 
 
