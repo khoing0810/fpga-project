@@ -49,7 +49,7 @@ module cpu_tb();
     .serial_out()
   );
 
-  wire [31:0] timeout_cycle = 10;
+  wire [31:0] timeout_cycle = 11;
 
   // Reset IMem, DMem, and RegFile before running new test
   task reset;
@@ -433,6 +433,7 @@ module cpu_tb();
     IMM       = 32'h0000_0FF0;
     INST_ADDR = 14'h0000;
     JUMP_ADDR = (32'h1000_0000 + {IMM[20:1], 1'b0}) >> 2;
+    $display("JUMP ADDRESS: %#08x", JUMP_ADDR[13:0]);
 
     `IMEM_PATH.mem[INST_ADDR + 0]   = {IMM[20], IMM[10:1], IMM[11], IMM[19:12], 5'd5, `OPC_JAL};
     `IMEM_PATH.mem[INST_ADDR + 1]   = {`FNC7_0, 5'd2, 5'd1, `FNC_ADD_SUB, 5'd6, `OPC_ARI_RTYPE};
@@ -696,6 +697,12 @@ module cpu_tb();
     `IMEM_PATH.mem[INST_ADDR + 2]   = {IMM[12], IMM[10:5], 5'd6, 5'd7, `FNC_BEQ, IMM[4:1], IMM[11], `OPC_BRANCH}; // Branch will be taken
     `IMEM_PATH.mem[INST_ADDR + 3]   = {`FNC7_0, 5'd8, 5'd9, `FNC_ADD_SUB, 5'd10, `OPC_ARI_RTYPE};
     `IMEM_PATH.mem[JUMP_ADDR[13:0]] = {`FNC7_1, 5'd8, 5'd9, `FNC_ADD_SUB, 5'd11, `OPC_ARI_RTYPE};
+    $display("Hazard to Branch operands instruction: %#010x", `IMEM_PATH.mem[INST_ADDR + 0]);
+    $display("Hazard to Branch operands instruction: %#010x", `IMEM_PATH.mem[INST_ADDR + 1]);
+    $display("Hazard to Branch operands instruction: %#010x", `IMEM_PATH.mem[INST_ADDR + 2]);
+    $display("Hazard to Branch operands instruction: %#010x %#010x", `IMEM_PATH.mem[INST_ADDR + 3], INST_ADDR + 3);
+    $display("Hazard to Branch operands instruction: %#010x", `IMEM_PATH.mem[JUMP_ADDR[13:0]]);
+    $display("JUMP ADDRESS: %#010x", JUMP_ADDR << 2);
     reset_cpu();
     check_result_rf(5'd10, `RF_PATH.mem[10], "Hazard 10 1"); // x10 should not be updated
     check_result_rf(5'd11, `RF_PATH.mem[9] - `RF_PATH.mem[8], "Hazard 10 2"); // x11 should be updated

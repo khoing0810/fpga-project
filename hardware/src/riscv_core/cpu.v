@@ -17,8 +17,8 @@ module cpu #(
 
     // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
-    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, aluwb_mux, mem_mux_wb; 
-    wire [31:0] inst_mux, bios_imem_mux, rs1_mux, rs2_mux; 
+    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, mem_mux_wb; 
+    wire [31:0] inst_mux, bios_imem_mux; 
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
     // rs1_mux = mux between ra1 and aluwb_mux
     // rs2_mux = mux between ra2 and aluwb_mux
@@ -36,7 +36,6 @@ module cpu #(
     reg [31:0] inst [2:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
     // reg [31:0] inst0, inst1, inst2, inst3;
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
-    reg [31:0] rs1_id2ex_nomux; // rs1 (non-muxed) value from the ID stage
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
     reg [31:0] imm_gen_id2ex; // immediate from the ID stage
@@ -44,13 +43,14 @@ module cpu #(
     
     reg [31:0] pc_id2ex; // PC from the ID stage
     reg [31:0] pc_ex2mw; // PC from the EX stage
+    reg [31:0] pc_if2id; // PC from the IF stage
     
     reg [31:0] alu_ex2mw; // ALU result from the EX stage
 
-    reg [31:0] rs2_exmux_to_mem; // rs2 value from the EX stage (muxed)
 
     // Extra registers
-    reg [31:0] pc = RESET_PC; // program counter
+    // reg [31:0] pc [0:3]; // pc for IF / ID / EX / MEM
+    reg [31:0] pc;
     reg [31:0] cycle_counter = 0; // number of cycles executed
     reg [31:0] instruction_counter = 0; // number of cycles executed
     reg [31:0] tohost_csr = 0; // tohost CSR
@@ -65,7 +65,6 @@ module cpu #(
 
     // Control signals
     wire [2:0] imm_sel;
-    wire reg_wen;
     wire br_un;
     wire a_sel;
     wire b_sel;
@@ -180,22 +179,24 @@ module cpu #(
     always @(posedge clk) begin
       if (rst) begin
         pc <= RESET_PC;
+        inst[0] <= NOP;
         inst[1] <= NOP;
         inst[2] <= NOP;
         instruction_counter <= 0;
         cycle_counter <= 0;
       end
       else begin
+          inst[0] <= inst_mux;
           inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
           inst[2] <= inst[1]; // move the instruction from the ID stage to the EX stage
 
           // PC
           pc <= pc_mux;
-          pc_id2ex <= pc;
+          pc_if2id <= pc;
+          pc_id2ex <= pc_if2id;
           pc_ex2mw <= pc_id2ex;
           
           // ID to EX
-          rs1_id2ex_nomux <= rd1;
           rs1_id2ex <= rd1;
           rs2_id2ex <= rd2;
           imm_gen_id2ex <= imm;
@@ -241,11 +242,12 @@ module cpu #(
       end
     end
     wire reg_wenEX;
+    wire reg_wenID;
     // ID stage
     control_logic control_logicID ( // only need imm_sel since that is the only signal that we need in this stage
         .inst(inst[0]),
         .imm_sel(imm_sel),
-        .reg_wen(),
+        .reg_wen(reg_wenID),
         .br_un(),
         .a_sel(),
         .b_sel(),
@@ -289,47 +291,47 @@ module cpu #(
     // IF/ID stage signals/values/modules 
     reg [31:0] a, b; // this is for pc_mux
     always @(*) begin // Used because of combinational logic
-        a = rst ? RESET_PC: 
-                    (pc_sel == 3'd0 || pc_sel == 3'd2 || pc_sel == 3'd3) ? pc:
-                    (pc_sel == 3'd1) ? alu_out:
-                    (pc_sel == 3'd4) ? pc_id2ex: 
+        // a = rst ? RESET_PC: 
+        //             (pc_sel == 3'd0 || pc_sel == 3'd2 || pc_sel == 3'd3) ? pc:
+        //             (pc_sel == 3'd1) ? alu_out:
+        //             (pc_sel == 3'd4) ? pc_if2id: 
+        //             RESET_PC;
+        // b = (rst || pc_sel == 3'd1 || pc_sel == 3'd3) ? 0 :
+        //     (pc_sel == 3'd0 || pc_sel == 3'd4) ? 4 :
+        //     (pc_sel == 3'd2) ? imm : RESET_PC;
+        // pc_mux = a + b;
+        pc_mux = rst ? RESET_PC: 
+                    (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
+                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
+                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
+                    (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
+                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
                     RESET_PC;
-        b = (rst || pc_sel == 3'd1 || pc_sel == 3'd3) ? 0 :
-            (pc_sel == 3'd0 || pc_sel == 3'd4) ? 4 :
-            (pc_sel == 3'd2) ? imm : RESET_PC;
-        pc_mux = a + b;
-        // pc_mux = rst ? RESET_PC: 
-        //             (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
-        //             (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
-        //             (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
-        //             (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
-        //             (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
-                    // RESET_PC;
-        inst[0] = inst_mux;
     end
-    wire hazard1, hazard2, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
-    assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX == 1'b1;
-    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && we == 1'b1; 
-    assign hazard = hazard1 || hazard2;
+    wire hazard0, hazard1, hazard2, hazard_branch, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
+    assign hazard0 = (inst[0][11:7] == bios_imem_mux[19:15] || inst[0][11:7] == bios_imem_mux[24:20]) && inst[0][11:7] != 5'd0 && reg_wenID;
+    assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX;
+    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && we && inst[1] != NOP; // gotta stall 2 cycles now!
+    // assign hazard_branch = bios_imem_mux[6:0] == `OPC_BRANCH && bios_imem_mux[24:20] == inst[1][];
+    assign hazard = hazard0 || hazard1 || hazard2;
     assign pc_sel = (inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_JAL || (inst[1][6:0] == `OPC_BRANCH && taken) ) ? 3'd1: 
-                    (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || hazard) ? 3'd3: 
+                    (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || hazard || inst[0][6:0] == `OPC_BRANCH) ? 3'd3: 
+                    (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4 :
                     3'd0;
     assign bios_addra = pc_mux[13:2];
     assign bios_ena = (pc_mux[30] == 1'b1) ? 1'b1 : 1'b0;
     assign imem_addrb = pc_mux[15:2];
     assign bios_imem_mux = (pc[30] == 1'b1) ? bios_douta : imem_doutb;
-    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || (inst[1][6:0] == `OPC_BRANCH && taken) || (inst[1] == bios_imem_mux)) || hazard);
+    assign nop_sel = ((inst[1][6:0] == `OPC_JALR || inst[0][6:0] == `OPC_JALR || (inst[0][6:0] == `OPC_BRANCH) || (inst[1][6:0] == `OPC_BRANCH) || (inst[0] == bios_imem_mux)) ||
+                       inst[0][6:0] == `OPC_JAL || inst[1][6:0] == `OPC_JAL || hazard);
         // nop_sel = 1 if the current instruction is a branch or jalr and the next instruction is not a branch or jalr
     assign inst_mux = (nop_sel == 1'b0) ? bios_imem_mux : NOP;
     
-    //ID forwarding signals (used to handle instructions two cycles apart)
-    assign rs1_fwd_sel = inst[0][19:15] == wa && we == 1 && wa != 5'd0;
-    assign rs2_fwd_sel = inst[0][24:20] == wa && we == 1 && wa != 5'd0;
-    assign ra1 = inst_mux[19:15];
-    assign ra2 = inst_mux[24:20];
+    assign ra1 = inst[0][19:15]; // replace with inst[0][19:15]
+    assign ra2 = inst[0][24:20]; // replace with inst[0][24:20]
 
     imm_gen imm_gen (
-        .inst(inst_mux),
+        .inst(inst[0]),
         .imm_sel(imm_sel),
         .imm(imm)
     );
@@ -422,7 +424,7 @@ module cpu #(
 // property PCReset;
 //     @(posedge clk) (rst) |-> ##1 (pc == RESET_PC);
 // endproperty
-// PCReset_check: assume property(PCReset);
+// PCReset_check: assume property(PCResimmet);
 
 // // SW
 // property swMask;
