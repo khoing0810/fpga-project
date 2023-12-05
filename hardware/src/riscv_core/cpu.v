@@ -33,8 +33,7 @@ module cpu #(
     wire [31:0] imm;
     
     // PIPELINE REGISTERS
-    reg [31:0] inst [2:0]; // use this to hold 3 instrutions in the pipeline, and the instruction that just finished
-    // reg [31:0] inst0, inst1, inst2, inst3;
+    reg [31:0] inst [3:0]; // hold 4 instrutions in the pipeline, and the instruction that just finished
     reg [31:0] rs1_id2ex; // rs1 value from the ID stage
     reg [31:0] rs2_id2ex; // rs2 value from the ID stage
 
@@ -46,6 +45,9 @@ module cpu #(
     reg [31:0] pc_if2id; // PC from the IF stage
     
     reg [31:0] alu_ex2mw; // ALU result from the EX stage
+
+    reg [31:0] wb_mux_mem2if; // WB mux from MEM stage
+    reg [31:0] csr_buffer; // since we add 5th pipeline stage for WB->IF
 
 
     // Extra registers
@@ -81,6 +83,7 @@ module cpu #(
         inst[0] = NOP;
         inst[1] = NOP;
         inst[2] = NOP;
+        inst[3] = NOP;
     end
     
     bios_mem bios_mem (
@@ -182,13 +185,15 @@ module cpu #(
         inst[0] <= NOP;
         inst[1] <= NOP;
         inst[2] <= NOP;
+        inst[3] <= NOP;
         instruction_counter <= 0;
         cycle_counter <= 0;
       end
       else begin
-          inst[0] <= inst_mux;
-          inst[1] <= inst[0]; // move the instruction from the IF stage to the ID stage
-          inst[2] <= inst[1]; // move the instruction from the ID stage to the EX stage
+          inst[0] <= inst_mux; // from IF to ID
+          inst[1] <= inst[0]; // move the instruction from the ID stage to the EX stage
+          inst[2] <= inst[1]; // move the instruction from the EX stage to the MEM stage
+          inst[3] <= inst[2]; // instruction from MEM/WB to IF
 
           // PC
           pc <= pc_mux;
@@ -205,6 +210,9 @@ module cpu #(
           //rs2_exmux_to_mem <= rs2_exmux;
           alu_ex2mw <= alu_out;
           imm_gen_ex2mw <= imm_gen_id2ex;
+
+          // MEM to IF
+          wb_mux_mem2if <= wb_mux;
 
           // Instruction and cycle counters
           if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
@@ -237,12 +245,16 @@ module cpu #(
 
         // cycle_counter <= cycle_counter_op1 + cycle_counter_op2;
         // instruction_counter <= inst_counter_op1 + inst_counter_op2;
+
         // CSR
         tohost_csr <= csr_we_mux;
+        csr_buffer <= tohost_csr;
       end
     end
     wire reg_wenEX;
     wire reg_wenID;
+    wire reg_wenMEM;
+
     // ID stage
     control_logic control_logicID ( // only need imm_sel since that is the only signal that we need in this stage
         .inst(inst[0]),
@@ -273,9 +285,24 @@ module cpu #(
         .csr_wen(csr_wen)
     ); 
 
-    // MEM+WB+IF stage
+    // MEM stage
+    control_logic control_logicMEM (
+      .inst(inst[2]),
+      .reg_wen(reg_wenMEM),
+      .wb_sel(),
+      .csr_sel(),
+      .csr_wen(),
+      .imm_sel(),
+      .br_un(),
+      .a_sel(),
+      .b_sel(),
+      .alu_sel(),
+      .mem_sel()
+    );
+
+    // WB stage
     control_logic control_logicWB (
-        .inst(inst[2]),
+        .inst(inst[3]),
         .reg_wen(we),
         .wb_sel(wb_sel),
         .csr_sel(),
@@ -308,14 +335,15 @@ module cpu #(
                     (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
                     RESET_PC;
     end
-    wire hazard0, hazard1, hazard2, hazard_branch, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
+    wire hazard0, hazard1, hazard2, hazard3, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
     assign hazard0 = (inst[0][11:7] == bios_imem_mux[19:15] || inst[0][11:7] == bios_imem_mux[24:20]) && inst[0][11:7] != 5'd0 && reg_wenID;
     assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX;
-    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && we && inst[1] != NOP; // gotta stall 2 cycles now!
+    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && reg_wenMEM && inst[1] != NOP; // && inst[1] != NOP;
+    assign hazard3 = (inst[3][11:7] == bios_imem_mux[19:15] || inst[3][11:7] == bios_imem_mux[24:20]) && inst[3][11:7] != 5'd0 && we && inst[1] != NOP;
     // assign hazard_branch = bios_imem_mux[6:0] == `OPC_BRANCH && bios_imem_mux[24:20] == inst[1][];
     assign hazard = hazard0 || hazard1 || hazard2;
-    assign pc_sel = (inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_JAL || (inst[1][6:0] == `OPC_BRANCH && taken) ) ? 3'd1: 
-                    (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || hazard || inst[0][6:0] == `OPC_BRANCH) ? 3'd3: 
+    assign pc_sel = (inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_JAL || (inst[1][6:0] == `OPC_BRANCH && taken)) ? 3'd1: 
+                    (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || inst[0][6:0] == `OPC_BRANCH || hazard ) ? 3'd3: 
                     (inst[1][6:0] == `OPC_BRANCH && !taken) ? 3'd4 :
                     3'd0;
     assign bios_addra = pc_mux[13:2];
@@ -404,8 +432,8 @@ module cpu #(
                      (mem_sel == 3'd3) ? instruction_counter :
                      (mem_sel == 3'd4) ? uart_dout : dmem_dout;
     assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
-    assign wd = wb_mux; // we are writing the value from the wb_mux to the register file
-    assign wa = inst[2][11:7]; // we are writing to the rd register (reg_wen) already set
+    assign wd = wb_mux_mem2if; // we are writing the value from the wb_mux to the register file
+    assign wa = inst[3][11:7]; // we are writing to the rd register (reg_wen) already set
     
     mem_decoder mem_decoder_post ( // used to set mem_mux_wb after the dmem_dout is set
         .inst(inst[2]),
@@ -417,7 +445,7 @@ module cpu #(
 
     // CSR
     assign csr_mux = (csr_sel != 3'd0) ? imm_gen_id2ex : rs1_id2ex;
-    assign csr_we_mux = csr_wen ? csr_mux : tohost_csr;
+    assign csr_we_mux = csr_wen ? csr_mux : csr_buffer;
 
 // ==================== ASSERTIONS ====================
 // PC RESET
