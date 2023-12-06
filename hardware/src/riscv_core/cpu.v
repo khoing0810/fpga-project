@@ -17,7 +17,7 @@ module cpu #(
 
     // MUXs (could remove aluwb_mux and just use wb_mux)
     reg [31:0] pc_mux; // mux between pc+4, alu_out, and jump_addr (done in combinational logic)
-    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, mem_mux_wb; 
+    wire [31:0] mem_mux, a_mux, b_mux, wb_mux, mem_mux_out; 
     wire [31:0] inst_mux, bios_imem_mux; 
     // inst_mux = mux between (bios_douta and imem_doutb) and NOP
     // rs1_mux = mux between ra1 and aluwb_mux
@@ -47,7 +47,7 @@ module cpu #(
     reg [31:0] alu_ex2mw; // ALU result from the EX stage
 
     reg [31:0] wb_mux_mem2if; // WB mux from MEM stage
-    reg [31:0] csr_buffer; // since we add 5th pipeline stage for WB->IF
+    reg [31:0] csr_buffer = 0; // since we add 5th pipeline stage for WB->IF
 
 
     // Extra registers
@@ -289,7 +289,7 @@ module cpu #(
     control_logic control_logicMEM (
       .inst(inst[2]),
       .reg_wen(reg_wenMEM),
-      .wb_sel(),
+      .wb_sel(wb_sel),
       .csr_sel(),
       .csr_wen(),
       .imm_sel(),
@@ -304,7 +304,7 @@ module cpu #(
     control_logic control_logicWB (
         .inst(inst[3]),
         .reg_wen(we),
-        .wb_sel(wb_sel),
+        .wb_sel(),
         .csr_sel(),
         .csr_wen(),
         .imm_sel(),
@@ -335,12 +335,10 @@ module cpu #(
                     (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
                     RESET_PC;
     end
-    wire hazard0, hazard1, hazard2, hazard3, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
+    wire hazard0, hazard1, hazard2, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
     assign hazard0 = (inst[0][11:7] == bios_imem_mux[19:15] || inst[0][11:7] == bios_imem_mux[24:20]) && inst[0][11:7] != 5'd0 && reg_wenID;
     assign hazard1 = (inst[1][11:7] == bios_imem_mux[19:15] || inst[1][11:7] == bios_imem_mux[24:20]) && inst[1][11:7] != 5'd0 && reg_wenEX;
-    assign hazard2 = (inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && reg_wenMEM && inst[1] != NOP; // && inst[1] != NOP;
-    assign hazard3 = (inst[3][11:7] == bios_imem_mux[19:15] || inst[3][11:7] == bios_imem_mux[24:20]) && inst[3][11:7] != 5'd0 && we && inst[1] != NOP;
-    // assign hazard_branch = bios_imem_mux[6:0] == `OPC_BRANCH && bios_imem_mux[24:20] == inst[1][];
+    assign hazard2 = ((inst[2][11:7] == bios_imem_mux[19:15] || inst[2][11:7] == bios_imem_mux[24:20]) && inst[2][11:7] != 5'd0 && reg_wenMEM) || inst[1] != NOP || inst[0] != NOP;
     assign hazard = hazard0 || hazard1 || hazard2;
     assign pc_sel = (inst[1][6:0] == `OPC_JALR || inst[1][6:0] == `OPC_JAL || (inst[1][6:0] == `OPC_BRANCH && taken)) ? 3'd1: 
                     (inst[0][6:0] == `OPC_JAL || inst[0][6:0] == `OPC_JALR || inst[0][6:0] == `OPC_BRANCH || hazard ) ? 3'd3: 
@@ -431,16 +429,16 @@ module cpu #(
                      (mem_sel == 3'd2) ? cycle_counter :
                      (mem_sel == 3'd3) ? instruction_counter :
                      (mem_sel == 3'd4) ? uart_dout : dmem_dout;
-    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_wb : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
+    assign wb_mux = (wb_sel == 2'd0) ? alu_ex2mw : (wb_sel == 2'd1) ? mem_mux_out : pc_ex2mw + 4; // TODO: 0: mem_mux, 1: ALU fwd, 2: pc+4 
     assign wd = wb_mux_mem2if; // we are writing the value from the wb_mux to the register file
     assign wa = inst[3][11:7]; // we are writing to the rd register (reg_wen) already set
     
-    mem_decoder mem_decoder_post ( // used to set mem_mux_wb after the dmem_dout is set
+    mem_decoder mem_decoder_post ( // used to set mem_mux_out after the dmem_dout is set
         .inst(inst[2]),
         .imm(alu_ex2mw),
         .mem_mux(mem_mux),
         .mem_wen(),
-        .mem_mux_wb(mem_mux_wb)
+        .mem_mux_wb(mem_mux_out)
     );
 
     // CSR
@@ -504,23 +502,23 @@ module cpu #(
 
 // // LH & LHU
 // property lh1;
-//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LH) |-> ##2 (mem_mux_wb[31:16] == 16'b0) || (mem_mux_wb[31:16] == 16'b1111111111111111);
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LH) |-> ##2 (mem_mux_out[31:16] == 16'b0) || (mem_mux_out[31:16] == 16'b1111111111111111);
 // endproperty
-// lh1_check: assert property(lh1) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0 or 1. Equal: %d", mem_mux_wb[31:16], mem_mux_wb[31:16] == 8'b0 || mem_mux_wb[31:16] == 8'b1);
+// lh1_check: assert property(lh1) else $error("Assertion failed. mem_mux_out[31:16] = %#010x, expected = 0 or 1. Equal: %d", mem_mux_out[31:16], mem_mux_out[31:16] == 8'b0 || mem_mux_out[31:16] == 8'b1);
 
 // property lh2;
-//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LHU) |-> ##2 (mem_mux_wb[31:16] == 8'b0);
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LHU) |-> ##2 (mem_mux_out[31:16] == 8'b0);
 // endproperty
-// lh2_check: assert property(lh2) else $error("Assertion failed. mem_mux_wb[31:16] = %#010x, expected = 0", mem_mux_wb[31:16]);
+// lh2_check: assert property(lh2) else $error("Assertion failed. mem_mux_out[31:16] = %#010x, expected = 0", mem_mux_out[31:16]);
 
 // // LB & LBU
 // property lb1;
-//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LB) |-> ##2 (mem_mux_wb[31:8] == 24'b0) || (mem_mux_wb[31:8] == {24{1'b1}});
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LB) |-> ##2 (mem_mux_out[31:8] == 24'b0) || (mem_mux_out[31:8] == {24{1'b1}});
 // endproperty
 // lb1_check: assume property(lb1);
 
 // property lb2;
-//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LBU) |-> ##2 (mem_mux_wb[31:8] == 24'b0);
+//     @(posedge clk) (inst_0[6:0] == `OPC_LOAD && inst_0[14:12] == `FNC_LBU) |-> ##2 (mem_mux_out[31:8] == 24'b0);
 // endproperty
 // lb2_check: assume property(lb2);
 

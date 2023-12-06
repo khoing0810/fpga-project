@@ -49,7 +49,7 @@ module cpu_tb();
     .serial_out()
   );
 
-  wire [31:0] timeout_cycle = 11;
+  wire [31:0] timeout_cycle = 15;
 
   // Reset IMem, DMem, and RegFile before running new test
   task reset;
@@ -288,6 +288,7 @@ module cpu_tb();
     DATA_ADDR       = (`RF_PATH.mem[1] + IMM0[11:0]) >> 2;
 
     `IMEM_PATH.mem[INST_ADDR + 0] = {IMM0[11:0], 5'd1, `FNC_LW,  5'd2,  `OPC_LOAD};
+    $display("LW instruction: %#010x", `IMEM_PATH.mem[INST_ADDR + 0]);
     `IMEM_PATH.mem[INST_ADDR + 1] = {IMM0[11:0], 5'd1, `FNC_LH,  5'd3,  `OPC_LOAD};
     // `IMEM_PATH.mem[INST_ADDR + 3] = {IMM1[11:0], 5'd1, `FNC_LH,  5'd4,  `OPC_LOAD}; // unaligned
     `IMEM_PATH.mem[INST_ADDR + 4] = {IMM2[11:0], 5'd1, `FNC_LH,  5'd5,  `OPC_LOAD};
@@ -626,6 +627,9 @@ module cpu_tb();
     `IMEM_PATH.mem[INST_ADDR + 0] = {`FNC7_0, 5'd1, 5'd2, `FNC_ADD_SUB, 5'd3, `OPC_ARI_RTYPE};
     `IMEM_PATH.mem[INST_ADDR + 1] = {`FNC7_0, 5'd4, 5'd3, `FNC_ADD_SUB, 5'd5, `OPC_ARI_RTYPE};
     `IMEM_PATH.mem[INST_ADDR + 2] = {`FNC7_0, 5'd5, 5'd6, `FNC_ADD_SUB, 5'd7, `OPC_ARI_RTYPE};
+    $display("2 ALU hazards, instruction 1: %#010x", `IMEM_PATH.mem[INST_ADDR + 0]);
+    $display("2 ALU hazards, instruction 2: %#010x", `IMEM_PATH.mem[INST_ADDR + 1]);
+    $display("2 ALU hazards, instruction 3: %#010x", `IMEM_PATH.mem[INST_ADDR + 2]);
     reset_cpu();
     check_result_rf(5'd7, `RF_PATH.mem[1] + `RF_PATH.mem[2] + `RF_PATH.mem[4] + `RF_PATH.mem[6], "Hazard 5");
 

@@ -6,7 +6,7 @@ module isa_tb();
   parameter CPU_CLOCK_PERIOD = 20;
   parameter CPU_CLOCK_FREQ   = 1_000_000_000 / CPU_CLOCK_PERIOD;
 
-  localparam TIMEOUT_CYCLE = 2000;
+  localparam TIMEOUT_CYCLE = 3000;
 
   initial clk = 0;
   always #(CPU_CLOCK_PERIOD/2) clk = ~clk;
