@@ -3,6 +3,9 @@
 
 module control_logic ( // ALL BASE SIGNALS ONLY (forwarding logic to be handled in CPU)
     input [31:0] inst,
+    //input [31:0] pc,
+    // input br_eq,
+    // input br_lt,
 
     output reg reg_wen,
     output reg [2:0] imm_sel,
@@ -10,6 +13,7 @@ module control_logic ( // ALL BASE SIGNALS ONLY (forwarding logic to be handled 
     output reg a_sel,
     output reg b_sel,
     output reg [3:0] alu_sel,
+    output reg [2:0] mem_sel,
     output reg [1:0] wb_sel,
     output reg [2:0] csr_sel,
     output reg csr_wen
@@ -41,6 +45,7 @@ always @(*) begin
                           (funct3 == 3'b110) ? `ALU_OR : // or
                           (funct3 == 3'b111) ? `ALU_AND : // and
                           4'b0000;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -61,6 +66,7 @@ always @(*) begin
                           (funct3 == 3'b110) ? `ALU_OR : // or
                           (funct3 == 3'b111) ? `ALU_AND : // and
                           4'b0000;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -72,6 +78,7 @@ always @(*) begin
             a_sel = 0;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b01;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -83,6 +90,7 @@ always @(*) begin
             a_sel = 0;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -94,6 +102,7 @@ always @(*) begin
             a_sel = 1;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -105,6 +114,7 @@ always @(*) begin
             a_sel = 0;
             b_sel = 1;
             alu_sel = `ALU_BSEL;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -116,6 +126,7 @@ always @(*) begin
             a_sel = 1;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -127,6 +138,7 @@ always @(*) begin
             a_sel = 1;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b10;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -138,6 +150,7 @@ always @(*) begin
             a_sel = 0;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b10;
             csr_sel = 3'b000;
             csr_wen = 0;
@@ -152,6 +165,7 @@ always @(*) begin
                     a_sel = 0;
                     b_sel = 1;
                     alu_sel = `ALU_ADD;
+                    mem_sel = 0;
                     wb_sel = 2'b00;
                     csr_sel = 3'b000;
                     csr_wen = 1;
@@ -163,6 +177,7 @@ always @(*) begin
                     a_sel = 0;
                     b_sel = 1;
                     alu_sel = `ALU_ADD;
+                    mem_sel = 0;
                     wb_sel = 2'b00;
                     csr_sel = 3'b001;
                     csr_wen = 1;
@@ -174,6 +189,7 @@ always @(*) begin
                     a_sel = 0;
                     b_sel = 1;
                     alu_sel = `ALU_ADD;
+                    mem_sel = 0;
                     wb_sel = 2'b00;
                     csr_sel = 3'b001;
                     csr_wen = 1;
@@ -187,6 +203,7 @@ always @(*) begin
             a_sel = 0;
             b_sel = 1;
             alu_sel = `ALU_ADD;
+            mem_sel = 0;
             wb_sel = 2'b00;
             csr_sel = 3'b000;
             csr_wen = 0;

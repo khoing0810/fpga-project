@@ -215,25 +215,36 @@ module cpu #(
           wb_mux_mem2if <= wb_mux;
 
           // Instruction and cycle counters
-        if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
-            cycle_counter_op1 <= 0;
-            inst_counter_op1 <= 0;
-            inst_counter_op2 <= 0;
-            cycle_counter_op2 <= 0;
-        end else if (inst[1] == NOP) begin
-            inst_counter_op1 <= instruction_counter;
-            cycle_counter_op1 <= cycle_counter;
-            inst_counter_op2 <= 0;
-            cycle_counter_op2 <= 1;
-        end else begin
-            inst_counter_op1 <= instruction_counter;
-            cycle_counter_op1 <= cycle_counter;
-            inst_counter_op2 <= 1;
-            cycle_counter_op2 <= 1;
-        end
+          if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
+            instruction_counter <= 0;
+            cycle_counter <= 0;
+          end
+          else if (inst[1] == NOP) begin
+            cycle_counter <= cycle_counter + 1;
+          end
+          else begin
+            cycle_counter <= cycle_counter + 1;
+            instruction_counter <= instruction_counter + 1;
+          end
+        // if (alu_out == 32'h80000018 && (inst[1][6:0] == `OPC_STORE && inst[1][14:12] == `FNC_SW)) begin
+        //     cycle_counter_op1 <= 0;
+        //     inst_counter_op1 <= 0;
+        //     inst_counter_op2 <= 0;
+        //     cycle_counter_op2 <= 0;
+        // end else if (inst[1] == NOP) begin
+        //     inst_counter_op1 <= instruction_counter;
+        //     cycle_counter_op1 <= cycle_counter;
+        //     inst_counter_op2 <= 0;
+        //     cycle_counter_op2 <= 1;
+        // end else begin
+        //     inst_counter_op1 <= instruction_counter;
+        //     cycle_counter_op1 <= cycle_counter;
+        //     inst_counter_op2 <= 1;
+        //     cycle_counter_op2 <= 1;
+        // end
 
-        cycle_counter <= cycle_counter_op1 + cycle_counter_op2;
-        instruction_counter <= inst_counter_op1 + inst_counter_op2;
+        // cycle_counter <= cycle_counter_op1 + cycle_counter_op2;
+        // instruction_counter <= inst_counter_op1 + inst_counter_op2;
 
         // CSR
         tohost_csr <= csr_we_mux;
@@ -253,6 +264,7 @@ module cpu #(
         .a_sel(),
         .b_sel(),
         .alu_sel(),
+        .mem_sel(),
         .wb_sel(),
         .csr_sel(),
         .csr_wen()
@@ -262,6 +274,7 @@ module cpu #(
     control_logic control_logicEX (
         .inst(inst[1]),
         .alu_sel(alu_sel),
+        .mem_sel(),
         .a_sel(a_sel),
         .b_sel(b_sel),
         .imm_sel(),
@@ -283,7 +296,8 @@ module cpu #(
       .br_un(),
       .a_sel(),
       .b_sel(),
-      .alu_sel()
+      .alu_sel(),
+      .mem_sel()
     );
 
     // WB stage
@@ -297,21 +311,29 @@ module cpu #(
         .br_un(),
         .a_sel(),
         .b_sel(),
-        .alu_sel()
+        .alu_sel(),
+        .mem_sel()
     );
 
     // IF/ID stage signals/values/modules 
     reg [31:0] a, b; // this is for pc_mux
     always @(*) begin // Used because of combinational logic
-        a = rst ? RESET_PC: 
-                    (pc_sel == 3'd0 || pc_sel == 3'd2 || pc_sel == 3'd3) ? pc:
-                    (pc_sel == 3'd1) ? alu_out:
-                    (pc_sel == 3'd4) ? pc_if2id: 
+        // a = rst ? RESET_PC: 
+        //             (pc_sel == 3'd0 || pc_sel == 3'd2 || pc_sel == 3'd3) ? pc:
+        //             (pc_sel == 3'd1) ? alu_out:
+        //             (pc_sel == 3'd4) ? pc_if2id: 
+        //             RESET_PC;
+        // b = (rst || pc_sel == 3'd1 || pc_sel == 3'd3) ? 0 :
+        //     (pc_sel == 3'd0 || pc_sel == 3'd4) ? 4 :
+        //     (pc_sel == 3'd2) ? imm : RESET_PC;
+        // pc_mux = a + b;
+        pc_mux = rst ? RESET_PC: 
+                    (pc_sel == 3'd0) ? pc + 4: // go to the next instruction
+                    (pc_sel == 3'd1) ? alu_out: // jump to the address in the rs1 register + imm (JALR)
+                    (pc_sel == 3'd2) ? pc + imm: // jump to the address in PC + imm (JAL handling, always taken BRANCH prediction)
+                    (pc_sel == 3'd3) ? pc : // bubble (JALR handling)
+                    (pc_sel == 3'd4) ? pc_id2ex + 4: // branch not taken (BRANCH handling)
                     RESET_PC;
-        b = (rst || pc_sel == 3'd1 || pc_sel == 3'd3) ? 0 :
-            (pc_sel == 3'd0 || pc_sel == 3'd4) ? 4 :
-            (pc_sel == 3'd2) ? imm : RESET_PC;
-        pc_mux = a + b;
     end
     wire hazard0, hazard1, hazard2, hazard; // checks instructions in the ID and EX stages for hazards (checks if rd in EX stage is equal to rs1 or rs2 in ID stage)
     assign hazard0 = (inst[0][11:7] == bios_imem_mux[19:15] || inst[0][11:7] == bios_imem_mux[24:20]) && inst[0][11:7] != 5'd0 && reg_wenID;
